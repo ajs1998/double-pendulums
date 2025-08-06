@@ -79,13 +79,16 @@
         const theta2 =
             (Math.PI / zoomAmount) * ((y / (gridSize - 1)) * 2 - 1) +
             zoomCenter[1]
-        return { theta1, theta2 }
+        return [ theta1, theta2 ]
     }
 
     function zoomIn(x: number, y: number) {
-        const { theta1, theta2 } = getThetaCoordinates(x, y)
+        const [theta1, theta2] = getThetaCoordinates(x, y)
         zoomAmount *= zoomFactor
         zoomCenter = [theta1, theta2]
+
+        // Reset the sampled pendulum to the new zoom center
+        sampledPendulumXY = [x, y]
         samplePendulum(sampledPendulumXY[0], sampledPendulumXY[1])
         resetInitialStates()
     }
@@ -102,7 +105,7 @@
     }
 
     async function samplePendulum(x: number, y: number) {
-        const { theta1, theta2 } = getThetaCoordinates(x, y)
+        const [ theta1, theta2 ] = getThetaCoordinates(x, y)
         sampledPendulumXY = [x, y]
         sampledPendulumLocation = [theta1 / Math.PI, theta2 / Math.PI]
 
@@ -137,6 +140,18 @@
         readBuffer.destroy()
     }
 
+    function fractalCanvasClick(e: MouseEvent) {
+        if (e.target !== fractalCanvas) {
+            return
+        }
+        const { x, y } = getXYCoordinates(e)
+        if (selectedClickAction.id === 1) {
+            samplePendulum(x, y)
+        } else if (selectedClickAction.id === 2) {
+            zoomIn(x, y)
+        }
+    }
+
     onMount(async () => {
         root = await tgpu.init()
         const device = root.device
@@ -147,19 +162,6 @@
             device,
             format,
             alphaMode: 'premultiplied',
-        })
-
-        // Use event listeners instead of onclick
-        addEventListener('click', (e: MouseEvent) => {
-            if (e.target !== fractalCanvas) {
-                return
-            }
-            const { x, y } = getXYCoordinates(e)
-            if (selectedClickAction.id === 1) {
-                samplePendulum(x, y)
-            } else if (selectedClickAction.id === 2) {
-                zoomIn(x, y)
-            }
         })
 
         // Track animation frame and resources for cleanup
@@ -610,6 +612,7 @@
         width={canvasWidth}
         height={canvasHeight}
         bind:this={fractalCanvas}
+        onclick={fractalCanvasClick}
         style="width: {canvasWidth}px; height: {canvasHeight}px; flex: none; display: block;"
     >
     </canvas>

@@ -1,5 +1,5 @@
 struct Pixel {
-    energy: vec2f, // kinetic_energy, potential_energy
+    energy: vec2f, // (kinetic_energy, potential_energy)
     distance: f32, // distance between the 2 pendulums
 }
 
@@ -47,9 +47,15 @@ fn main_angles(
 
     let pixel = pixels[pixel_index];
 
+    // Map theta1 to a color
     let color_index = u32(fract(theta1 / (2 * PI)) * 255);
-    // let color_index = u32((pixel.energy[0] + pixel.energy[1]) * 10) % 256;
-    let color = color_map[color_index];
 
+    // Map energy to a color
+    // let color_index = u32((pixel.energy[0] + pixel.energy[1]) * 10) % 256;
+
+    // Map distance to a color
+    // let color_index = u32(pixel.distance * 255);
+
+    let color = color_map[color_index];
     return Out(vec4f(x, y, 0., 1.), vec4f(color.rgb, 1.));
 }
