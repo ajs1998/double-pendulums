@@ -24,12 +24,16 @@
             <a class="btn btn-ghost text-xl" href="/">WebGPU Experiments</a>
         </div>
         <div class="navbar-center hidden lg:flex">
-            <ul class="menu menu-horizontal px-1">
-                <li><a href="/pendulumFractal">Double Pendulum</a></li>
-            </ul>
+            <a class="btn btn-ghost text-lg" href="/pendulumFractal"
+                >Double Pendulum</a
+            >
         </div>
         <div class="navbar-end">
-            <!-- <a class="btn">Button</a> -->
+            <a
+                class="btn text-sm"
+                href="https://github.com/ajs1998/webgpu-experiments"
+                target="_blank">GitHub</a
+            >
         </div>
     </div>
 

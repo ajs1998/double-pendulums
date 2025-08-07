@@ -1,6 +1,10 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte'
-    import tgpu, { type StorageFlag, type TgpuBuffer, type TgpuRoot } from 'typegpu'
+    import tgpu, {
+        type StorageFlag,
+        type TgpuBuffer,
+        type TgpuRoot,
+    } from 'typegpu'
     import * as d from 'typegpu/data'
     import computeShaderCode from '$lib/shaders/pendulumFractal/compute.wgsl?raw'
     import vertexShaderCode from '$lib/shaders/pendulumFractal/vert.wgsl?raw'
@@ -24,13 +28,12 @@
         colormapMap[name] = raw as string
     }
 
+    const fractalCanvasWidth = 720
+    const fractalCanvasHeight = fractalCanvasWidth
+    const sampledCanvasSize = 250
+
     let selectedColormap = $state('CET-C6s.csv')
     let colormapRaw = $derived(colormapMap[selectedColormap])
-
-    const canvasWidth = 720
-    const canvasHeight = canvasWidth
-    let fractalCanvas: HTMLCanvasElement
-
     let targetTps = $state(200)
     let measuredTps = $state(0)
     let measuredFps = $state(0)
@@ -39,13 +42,16 @@
     let zoomCenter = $state([0, 0])
     let timestep = 0.01
     let timestepTemp = $state(timestep)
-    let root: TgpuRoot
     let reset: () => void = $state(() => {})
     let resetTps: () => void = $state(() => {})
     let resetInitialStates: () => void = $state(() => {})
     let resetShaders = $state(() => {})
+    let root: TgpuRoot
+    let fractalCanvas: HTMLCanvasElement
+    let sampledCanvas: HTMLCanvasElement
+    let gradientCanvas: HTMLCanvasElement
 
-    let gridSize = canvasWidth
+    let gridSize = fractalCanvasWidth
     const pixelCount = gridSize * gridSize
 
     let clickActions = $state([
@@ -59,7 +65,10 @@
         },
     ])
     let selectedClickAction = $state(clickActions[0])
-    let sampledPendulumXY = $state([Math.floor(gridSize / 2), Math.floor(gridSize / 2)])
+    let sampledPendulumXY = $state([
+        Math.floor(gridSize / 2),
+        Math.floor(gridSize / 2),
+    ])
     let sampledPendulumLocation = $state([0, 0])
     let sampledPendulum = $state([0, 0])
     let stateBuffer: TgpuBuffer<d.WgslArray<d.Vec4f>> & StorageFlag
@@ -67,7 +76,9 @@
     function getXYCoordinates(e: MouseEvent) {
         const rect = fractalCanvas.getBoundingClientRect()
         const x = Math.floor((e.clientX - rect.left) / (rect.width / gridSize))
-        const y = (gridSize - 1) -
+        const y =
+            gridSize -
+            1 -
             Math.floor((e.clientY - rect.top) / (rect.height / gridSize))
         return { x, y }
     }
@@ -79,7 +90,7 @@
         const theta2 =
             (Math.PI / zoomAmount) * ((y / (gridSize - 1)) * 2 - 1) +
             zoomCenter[1]
-        return [ theta1, theta2 ]
+        return [theta1, theta2]
     }
 
     function zoomIn(x: number, y: number) {
@@ -105,7 +116,7 @@
     }
 
     async function samplePendulum(x: number, y: number) {
-        const [ theta1, theta2 ] = getThetaCoordinates(x, y)
+        const [theta1, theta2] = getThetaCoordinates(x, y)
         sampledPendulumXY = [x, y]
         sampledPendulumLocation = [theta1 / Math.PI, theta2 / Math.PI]
 
@@ -135,7 +146,7 @@
         const arrayBuffer = readBuffer.getMappedRange()
         const f32 = new Float32Array(arrayBuffer)
         sampledPendulum = [f32[0], f32[2]]
-        trace = [];
+        trace = []
         readBuffer.unmap()
         readBuffer.destroy()
     }
@@ -155,7 +166,7 @@
     onMount(async () => {
         root = await tgpu.init()
         const device = root.device
-    
+
         const ctx = fractalCanvas.getContext('webgpu') as GPUCanvasContext
         const format = navigator.gpu.getPreferredCanvasFormat()
         ctx.configure({
@@ -179,6 +190,8 @@
             cleanupFns = []
             timestep = timestepTemp
             trace = []
+
+            drawGradient()
 
             // Create persistent sampled pendulum buffer
             const sampledPendulumBuffer = device.createBuffer({
@@ -473,7 +486,8 @@
                 // Continuously update sampledPendulum from GPU buffer
                 // Use a persistent staging buffer for sampled pendulum reads
                 if (root && sampledPendulumXY) {
-                    const i = sampledPendulumXY[0] + sampledPendulumXY[1] * gridSize
+                    const i =
+                        sampledPendulumXY[0] + sampledPendulumXY[1] * gridSize
                     if (stateBuffer) {
                         if (!sampledPendulumBuffer) return
                         const readBuffer = sampledPendulumBuffer
@@ -506,19 +520,18 @@
     onDestroy(() => {
         root?.destroy()
     })
-    let sampledCanvas: HTMLCanvasElement
 
     // Trace state for the second bob
-    let trace: { x: number, y: number, alpha: number }[] = [];
-    const maxTraceLength = 1000;
-    const fadeStep = 0.999; // fade factor per frame
+    let trace: { x: number; y: number; alpha: number }[] = []
+    const maxTraceLength = 1000
+    const fadeStep = 0.999 // fade factor per frame
 
     function drawSampledPendulum(theta1: number, theta2: number) {
         if (!sampledCanvas) return
         const ctx = sampledCanvas.getContext('2d')
         if (!ctx) return
 
-        ctx.clearRect(0, 0, sampledCanvas.width, sampledCanvas.height);
+        ctx.clearRect(0, 0, sampledCanvas.width, sampledCanvas.height)
         let colorMap = loadColorMap(colormapRaw)
         const cmapLen = colorMap.length
 
@@ -554,28 +567,28 @@
         const y2 = y1 + l2 * Math.cos(theta2)
 
         // Add current position to trace
-        trace.push({ x: x2, y: y2, alpha: 1.0 });
-        if (trace.length > maxTraceLength) trace.shift();
+        trace.push({ x: x2, y: y2, alpha: 1.0 })
+        if (trace.length > maxTraceLength) trace.shift()
 
         // Draw trace (white)
         for (let i = 1; i < trace.length; ++i) {
-            const prev = trace[i - 1];
-            const curr = trace[i];
-            ctx.save();
-            ctx.globalAlpha = curr.alpha * (i / trace.length);
-            ctx.strokeStyle = "#fff";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(prev.x, prev.y);
-            ctx.lineTo(curr.x, curr.y);
-            ctx.stroke();
-            ctx.restore();
+            const prev = trace[i - 1]
+            const curr = trace[i]
+            ctx.save()
+            ctx.globalAlpha = curr.alpha * (i / trace.length)
+            ctx.strokeStyle = '#fff'
+            ctx.lineWidth = 2
+            ctx.beginPath()
+            ctx.moveTo(prev.x, prev.y)
+            ctx.lineTo(curr.x, curr.y)
+            ctx.stroke()
+            ctx.restore()
         }
         // Fade trace alphas
-        for (let t of trace) t.alpha *= fadeStep;
+        for (let t of trace) t.alpha *= fadeStep
 
         // Draw first arm
-        ctx.globalAlpha = 1.0;
+        ctx.globalAlpha = 1.0
         ctx.strokeStyle = rgb(color1)
         ctx.lineWidth = 3
         ctx.beginPath()
@@ -604,37 +617,41 @@
         ctx.fill()
     }
 
+    function drawGradient() {
+        if (!gradientCanvas) return
+        const ctx = gradientCanvas.getContext('2d')
+        if (!ctx) return
+        const colorMap = loadColorMap(colormapRaw)
+        const w = gradientCanvas.width
+        const h = gradientCanvas.height
+        for (let x = 0; x < w; x++) {
+            const t = x / (w - 1)
+            const idx = Math.floor(t * (colorMap.length - 1))
+            const rgbArr = colorMap[idx]
+            ctx.fillStyle = `rgb(${Math.round(rgbArr[0] * 255)},${Math.round(rgbArr[1] * 255)},${Math.round(rgbArr[2] * 255)})`
+            ctx.fillRect(x, 0, 1, h)
+        }
+    }
 </script>
 
-<main class="flex flex-row m-4 gap-4">
+<main class="m-4 flex flex-row gap-4">
     <div class="flex flex-col">
         <canvas
-            class="border border-gray-700 rounded-lg"
-            width={canvasWidth}
-            height={canvasHeight}
+            class="rounded-lg border border-gray-700"
+            width={fractalCanvasWidth}
+            height={fractalCanvasHeight}
             bind:this={fractalCanvas}
             onclick={fractalCanvasClick}
-            style="width: {canvasWidth}px; height: {canvasHeight}px; flex: none; display: block;"
+            style="width: {fractalCanvasWidth}px; height: {fractalCanvasHeight}px; flex: none; display: block;"
         >
         </canvas>
     </div>
 
     <div class="flex flex-col overflow-y-auto py-4 pr-4">
-        <h1 class="text-xl font-bold">Double pendulum fractal</h1>
-        <div class="flex flex-row gap-6 flex-wrap items-start">
-            <div class="flex flex-col gap-2 min-w-[260px]">
-                <div class="stats shadow mb-2">
-                    <div class="stat">
-                        <div class="stat-title">Frames per second</div>
-                        <div class="stat-value">{measuredFps.toFixed(0)}</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-title">Ticks per second</div>
-                        <div class="stat-value">{measuredTps.toFixed(0)}</div>
-                    </div>
-                </div>
-
-                <fieldset class="fieldset">
+        <div class="flex flex-row flex-wrap items-start gap-6">
+            <div class="flex min-w-[260px] flex-col gap-2">
+                <fieldset class="fieldset m-2">
+                    <!-- Click action buttons -->
                     <legend class="fieldset-legend">Click action</legend>
                     <div class="join">
                         {#each clickActions as clickAction}
@@ -642,19 +659,36 @@
                                 class="btn join-item"
                                 type="radio"
                                 name="clickAction"
-                                aria-label="{clickAction.text}"
-                                onclick={() => selectedClickAction = clickAction}
-                                checked={clickAction.id === 1} />
+                                aria-label={clickAction.text}
+                                onclick={() =>
+                                    (selectedClickAction = clickAction)}
+                                checked={clickAction.id === 1}
+                            />
                         {/each}
                     </div>
 
-                    <legend class="fieldset-legend">Color map</legend>
-                    <select class="select" bind:value={selectedColormap} onchange={resetShaders}>
+                    <!-- Color map selector -->
+                    <div
+                        class="tooltip tooltip-bottom"
+                        data-tip="ColorCET color maps"
+                    >
+                        <legend class="fieldset-legend">Color map</legend>
+                    </div>
+                    <select
+                        class="select"
+                        bind:value={selectedColormap}
+                        onchange={resetShaders}
+                    >
                         {#each colormapList as cmap}
                             <option value={cmap}>{cmap}</option>
                         {/each}
                     </select>
+                    <canvas
+                        class="mt-2 h-4 w-full rounded-lg border border-gray-700"
+                        bind:this={gradientCanvas}
+                    ></canvas>
 
+                    <!-- Tick rate slider -->
                     <legend class="fieldset-legend">
                         Tick rate
                         <span>{targetTps}</span>
@@ -669,10 +703,16 @@
                     />
                     <p class="label">Simulation ticks per second</p>
 
-                    <legend class="fieldset-legend">
-                        Time step
-                        <span>{timestepTemp.toFixed(3)}</span>
-                    </legend>
+                    <!-- Time step slider -->
+                    <div
+                        class="tooltip tooltip-bottom"
+                        data-tip="Lower is slower, but more accurate"
+                    >
+                        <legend class="fieldset-legend">
+                            Time step
+                            <span>{timestepTemp.toFixed(3)}</span>
+                        </legend>
+                    </div>
                     <input
                         type="range"
                         class="range"
@@ -682,32 +722,73 @@
                         onmouseup={resetShaders}
                         bind:value={timestepTemp}
                     />
-                    <div class="tooltip tooltip-bottom" data-tip="Lower is slower, but more accurate">
-                        <p class="label">Simulation time step</p>
-                    </div>
+                    <p class="label">Simulation time step</p>
 
                     <div class="divider"></div>
 
-                    <button class="btn btn-primary" onclick={reset}>Reset zoom</button>
+                    <!-- Zoom controls -->
+                    <button class="btn btn-primary" onclick={reset}
+                        >Reset zoom</button
+                    >
                 </fieldset>
             </div>
 
-            <div class="flex flex-col items-center min-w-[260px]">
-                <span class="label font-semibold">Sampled pendulum initial angles</span>
-                {#if sampledPendulumLocation}
-                    <span class="label font-mono">
-                        ({(sampledPendulumLocation[0] >= 0 ? '+' : '') + sampledPendulumLocation[0].toFixed(5)} pi,
-                        {(sampledPendulumLocation[1] >= 0 ? '+' : '') + sampledPendulumLocation[1].toFixed(5)} pi)
-                    </span>
-                {/if}
-                <div class="divider"></div>
+            <div class="flex min-w-[260px] flex-col items-center">
+                <!-- Sampled pendulum display -->
+                <span class="label font-semibold"
+                    >Sampled pendulum initial angles</span
+                >
+                <span class="label font-mono">
+                    ({(sampledPendulumLocation[0] >= 0 ? '+' : '') +
+                        sampledPendulumLocation[0].toFixed(5)} pi,
+                    {(sampledPendulumLocation[1] >= 0 ? '+' : '') +
+                        sampledPendulumLocation[1].toFixed(5)} pi)
+                </span>
                 <canvas
                     bind:this={sampledCanvas}
-                    width="240"
-                    height="240"
-                    class="border border-gray-700 rounded-lg"
+                    width={sampledCanvasSize}
+                    height={sampledCanvasSize}
+                    class="rounded-lg border border-gray-700"
                 ></canvas>
+
+                <div class="divider"></div>
+
+                <!-- Performance stats -->
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-title">Frames per second</div>
+                        <div class="stat-value">{measuredFps.toFixed(0)}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-title">Ticks per second</div>
+                        <div class="stat-value">{measuredTps.toFixed(0)}</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </main>
+
+<footer
+    class="footer sm:footer-horizontal footer-center bg-base-300 text-base-content p-4"
+>
+    <aside>
+        <p>
+            Made by
+            <a href="https://github.com/ajs1998" class="link" target="_blank">
+                Alex Sweeney
+            </a>
+        </p>
+
+        <p>
+            Inspired by 2swap's YouTube video
+            <a
+                href="https://www.youtube.com/watch?v=dtjb2OhEQcU"
+                class="link"
+                target="_blank"
+            >
+                Double Pendulums are Chaoticn't
+            </a>
+        </p>
+    </aside>
+</footer>
