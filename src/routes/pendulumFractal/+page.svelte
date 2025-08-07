@@ -27,7 +27,7 @@
     let selectedColormap = $state('CET-C6s.csv')
     let colormapRaw = $derived(colormapMap[selectedColormap])
 
-    const canvasWidth = 512 + 256
+    const canvasWidth = 720
     const canvasHeight = canvasWidth
     let fractalCanvas: HTMLCanvasElement
 
@@ -606,18 +606,20 @@
 
 </script>
 
-<main class="flex flex-row">
-    <canvas
-        class="mr-4"
-        width={canvasWidth}
-        height={canvasHeight}
-        bind:this={fractalCanvas}
-        onclick={fractalCanvasClick}
-        style="width: {canvasWidth}px; height: {canvasHeight}px; flex: none; display: block;"
-    >
-    </canvas>
+<main class="flex flex-row m-4 gap-4">
+    <div class="flex flex-col">
+        <canvas
+            class="border border-gray-700 rounded-lg"
+            width={canvasWidth}
+            height={canvasHeight}
+            bind:this={fractalCanvas}
+            onclick={fractalCanvasClick}
+            style="width: {canvasWidth}px; height: {canvasHeight}px; flex: none; display: block;"
+        >
+        </canvas>
+    </div>
 
-    <div class="flex flex-col max-h-screen overflow-y-auto py-4 pr-4">
+    <div class="flex flex-col overflow-y-auto py-4 pr-4">
         <h1 class="text-xl font-bold">Double pendulum fractal</h1>
         <div class="flex flex-row gap-6 flex-wrap items-start">
             <div class="flex flex-col gap-2 min-w-[260px]">
@@ -633,36 +635,6 @@
                 </div>
 
                 <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Target tickrate</legend>
-                    <input
-                        type="range"
-                        class="range"
-                        min="1"
-                        max="200"
-                        onclick={resetTps}
-                        bind:value={targetTps}
-                    />
-                    <p class="label">{targetTps}</p>
-
-                    <legend class="fieldset-legend">Timestep</legend>
-                    <input
-                        type="range"
-                        class="range"
-                        min="0.001"
-                        max="0.02"
-                        step="0.001"
-                        onmouseup={resetShaders}
-                        bind:value={timestepTemp}
-                    />
-                    <p class="label">{timestepTemp.toFixed(3)}</p>
-
-                    <legend class="fieldset-legend">Color map</legend>
-                    <select class="select" bind:value={selectedColormap} onchange={resetShaders}>
-                        {#each colormapList as cmap}
-                            <option value={cmap}>{cmap}</option>
-                        {/each}
-                    </select>
-
                     <legend class="fieldset-legend">Click action</legend>
                     <div class="join">
                         {#each clickActions as clickAction}
@@ -674,6 +646,44 @@
                                 onclick={() => selectedClickAction = clickAction}
                                 checked={clickAction.id === 1} />
                         {/each}
+                    </div>
+
+                    <legend class="fieldset-legend">Color map</legend>
+                    <select class="select" bind:value={selectedColormap} onchange={resetShaders}>
+                        {#each colormapList as cmap}
+                            <option value={cmap}>{cmap}</option>
+                        {/each}
+                    </select>
+
+                    <legend class="fieldset-legend">
+                        Tick rate
+                        <span>{targetTps}</span>
+                    </legend>
+                    <input
+                        type="range"
+                        class="range"
+                        min="1"
+                        max="200"
+                        onclick={resetTps}
+                        bind:value={targetTps}
+                    />
+                    <p class="label">Simulation ticks per second</p>
+
+                    <legend class="fieldset-legend">
+                        Time step
+                        <span>{timestepTemp.toFixed(3)}</span>
+                    </legend>
+                    <input
+                        type="range"
+                        class="range"
+                        min="0.001"
+                        max="0.02"
+                        step="0.001"
+                        onmouseup={resetShaders}
+                        bind:value={timestepTemp}
+                    />
+                    <div class="tooltip tooltip-bottom" data-tip="Lower is slower, but more accurate">
+                        <p class="label">Simulation time step</p>
                     </div>
 
                     <div class="divider"></div>
