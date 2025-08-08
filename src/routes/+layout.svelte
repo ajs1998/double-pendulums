@@ -5,8 +5,11 @@
 
     let { children } = $props()
 
+    let showWebgpuAlert = $state(false)
+
     onMount(async () => {
         if (!navigator.gpu) {
+            showWebgpuAlert = true
             throw new Error('WebGPU is not supported on this browser.')
         } else {
             const root = await tgpu.init()
@@ -40,12 +43,14 @@
     {@render children()}
 </div>
 
-{#if !navigator.gpu}
+{#if showWebgpuAlert}
     <div class="toast toast-top toast-center my-10">
         <div class="alert alert-error">
             <div class="gap-12">
                 <h3 class="font-bold">Error</h3>
-                <span class="text-sm">This browser does not support WebGPU</span>
+                <span class="text-sm">
+                    This browser does not support WebGPU
+                </span>
             </div>
             <a
                 class="btn btn-sm btn-soft"
