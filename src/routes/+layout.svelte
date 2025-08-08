@@ -1,5 +1,6 @@
 <script lang="ts">
     import '../app.css'
+    import { base } from '$app/paths';
     import { onMount } from 'svelte'
     import tgpu from 'typegpu'
 
@@ -24,10 +25,10 @@
 <div class="flex flex-col">
     <div class="navbar bg-base-100 flex flex-row shadow-sm">
         <div class="navbar-start">
-            <a class="btn btn-ghost text-xl" href="/">WebGPU Experiments</a>
+            <a class="btn btn-ghost text-xl" href="{base}/">WebGPU Experiments</a>
         </div>
         <div class="navbar-center hidden lg:flex">
-            <a class="btn btn-ghost text-lg" href="/pendulumFractal"
+            <a class="btn btn-ghost text-lg" href="{base}/pendulumFractal"
                 >Double Pendulum</a
             >
         </div>
