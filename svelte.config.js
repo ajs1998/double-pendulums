@@ -18,7 +18,7 @@ const config = {
             entries: []
         },
 		paths: {
-			base: dev ? '' : '/your-repo-name'
+			base: dev ? '' : '/webgpu-experiments',
 		},
     },
 }
