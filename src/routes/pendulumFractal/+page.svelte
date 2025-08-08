@@ -11,6 +11,12 @@
     import fragmentShaderCode from '$lib/shaders/pendulumFractal/frag.wgsl?raw'
     import { RollingAverage } from '$lib/RollingAverage'
 
+    interface ColorCETMap {
+        fileName: string
+        displayName: string
+        csv: string
+    }
+
     // Dynamically import all colorcet colormap CSVs using Vite's import.meta.glob
     const colormapModules = import.meta.glob('$lib/colorcet-maps/*.csv', {
         query: '?raw',
@@ -18,22 +24,26 @@
         eager: true,
     })
 
-    const colormapList = Object.keys(colormapModules)
-        .map((path) => path.split('/').pop()!)
-        .sort()
-
-    const colormapMap: Record<string, string> = {}
-    for (const [path, raw] of Object.entries(colormapModules)) {
-        const name = path.split('/').pop()!
-        colormapMap[name] = raw as string
-    }
+    const cyclicColorMaps = Object.entries(colormapModules)
+        .filter(([path]) => {
+            return /CET-C\ds?\.csv$/.test(path)
+        })
+        .map(([path, csv]) => {
+            const fileName = path.split('/').pop()!
+            const displayName = "Cyclic " + fileName.replace(
+                /CET-C(\d)(s?)\.csv/,
+                (_, num, s) => s ? `${num} shift 25%` : num
+            )
+            return { fileName, displayName, csv } as ColorCETMap
+        })
+    // console.log('Cyclic color maps:', cyclicColorMaps)
 
     const fractalCanvasWidth = 720
     const fractalCanvasHeight = fractalCanvasWidth
     const sampledCanvasSize = 250
 
-    let selectedColormap = $state('CET-C6s.csv')
-    let colormapRaw = $derived(colormapMap[selectedColormap])
+    let selectedColormap = $state(cyclicColorMaps[11])
+    let colormapCsv = $derived(selectedColormap.csv)
     let targetTps = $state(200)
     let measuredTps = $state(0)
     let measuredFps = $state(0)
@@ -282,7 +292,7 @@
                 .$usage('storage', 'vertex')
             cleanupFns.push(() => pixelsBuffer.destroy())
 
-            const colorMap = loadColorMap(colormapRaw)
+            const colorMap = loadColorMap(colormapCsv)
             const colorMapBuffer = root
                 .createBuffer(d.arrayOf(d.vec3f, colorMap.length), colorMap)
                 .$usage('storage', 'vertex')
@@ -532,7 +542,7 @@
         if (!ctx) return
 
         ctx.clearRect(0, 0, sampledCanvas.width, sampledCanvas.height)
-        let colorMap = loadColorMap(colormapRaw)
+        let colorMap = loadColorMap(colormapCsv)
         const cmapLen = colorMap.length
 
         function angleToColorIdx(theta: number) {
@@ -621,7 +631,7 @@
         if (!gradientCanvas) return
         const ctx = gradientCanvas.getContext('2d')
         if (!ctx) return
-        const colorMap = loadColorMap(colormapRaw)
+        const colorMap = loadColorMap(colormapCsv)
         const w = gradientCanvas.width
         const h = gradientCanvas.height
         for (let x = 0; x < w; x++) {
@@ -642,18 +652,35 @@
             height={fractalCanvasHeight}
             bind:this={fractalCanvas}
             onclick={fractalCanvasClick}
-            style="width: {fractalCanvasWidth}px; height: {fractalCanvasHeight}px; flex: none; display: block;"
         >
         </canvas>
     </div>
 
     <div class="flex flex-col overflow-y-auto py-4 pr-4">
         <div class="flex flex-row flex-wrap items-start gap-6">
-            <div class="flex min-w-[260px] flex-col gap-2">
+            <div class="flex flex-col gap-2">
+
+                <!-- Sampled pendulum display -->
+                <span class="label font-semibold">
+                    Sampled pendulum initial angles
+                </span>
+                <span class="label font-mono">
+                    ({(sampledPendulumLocation[0] >= 0 ? '+' : '') +
+                        sampledPendulumLocation[0].toFixed(5)} pi,
+                    {(sampledPendulumLocation[1] >= 0 ? '+' : '') +
+                        sampledPendulumLocation[1].toFixed(5)} pi)
+                </span>
+                <canvas
+                    width={sampledCanvasSize}
+                    height={sampledCanvasSize}
+                    bind:this={sampledCanvas}
+                    class="rounded-lg border border-gray-700"
+                ></canvas>
+
                 <fieldset class="fieldset m-2">
                     <!-- Click action buttons -->
                     <legend class="fieldset-legend">Click action</legend>
-                    <div class="join">
+                    <div class="join join-vertical">
                         {#each clickActions as clickAction}
                             <input
                                 class="btn join-item"
@@ -667,92 +694,42 @@
                         {/each}
                     </div>
 
-                    <!-- Color map selector -->
-                    <div
-                        class="tooltip tooltip-bottom"
-                        data-tip="ColorCET color maps"
+                    <!-- Zoom controls -->
+                    <legend class="fieldset-legend">Zoom controls</legend>
+                    <button
+                        class="btn btn-primary"
+                        onclick={reset}
                     >
-                        <legend class="fieldset-legend">Color map</legend>
-                    </div>
+                        Reset zoom
+                    </button>
+
+                    <!-- Color map selector -->
+                    <legend class="fieldset-legend">Color map</legend>
                     <select
                         class="select"
                         bind:value={selectedColormap}
                         onchange={resetShaders}
                     >
-                        {#each colormapList as cmap}
-                            <option value={cmap}>{cmap}</option>
+                        {#each cyclicColorMaps as cmap}
+                            <option value={cmap}>{cmap.displayName}</option>
                         {/each}
                     </select>
                     <canvas
                         class="mt-2 h-4 w-full rounded-lg border border-gray-700"
                         bind:this={gradientCanvas}
                     ></canvas>
-
-                    <!-- Tick rate slider -->
-                    <legend class="fieldset-legend">
-                        Tick rate
-                        <span>{targetTps}</span>
-                    </legend>
-                    <input
-                        type="range"
-                        class="range"
-                        min="1"
-                        max="200"
-                        onclick={resetTps}
-                        bind:value={targetTps}
-                    />
-                    <p class="label">Simulation ticks per second</p>
-
-                    <!-- Time step slider -->
-                    <div
-                        class="tooltip tooltip-bottom"
-                        data-tip="Lower is slower, but more accurate"
+                    <a
+                        class="label link"
+                        href="https://colorcet.com/gallery.html"
+                        target="_blank"
                     >
-                        <legend class="fieldset-legend">
-                            Time step
-                            <span>{timestepTemp.toFixed(3)}</span>
-                        </legend>
-                    </div>
-                    <input
-                        type="range"
-                        class="range"
-                        min="0.001"
-                        max="0.02"
-                        step="0.001"
-                        onmouseup={resetShaders}
-                        bind:value={timestepTemp}
-                    />
-                    <p class="label">Simulation time step</p>
+                        ColorCET maps
+                    </a>
 
-                    <div class="divider"></div>
-
-                    <!-- Zoom controls -->
-                    <button class="btn btn-primary" onclick={reset}
-                        >Reset zoom</button
-                    >
                 </fieldset>
             </div>
 
-            <div class="flex min-w-[260px] flex-col items-center">
-                <!-- Sampled pendulum display -->
-                <span class="label font-semibold"
-                    >Sampled pendulum initial angles</span
-                >
-                <span class="label font-mono">
-                    ({(sampledPendulumLocation[0] >= 0 ? '+' : '') +
-                        sampledPendulumLocation[0].toFixed(5)} pi,
-                    {(sampledPendulumLocation[1] >= 0 ? '+' : '') +
-                        sampledPendulumLocation[1].toFixed(5)} pi)
-                </span>
-                <canvas
-                    bind:this={sampledCanvas}
-                    width={sampledCanvasSize}
-                    height={sampledCanvasSize}
-                    class="rounded-lg border border-gray-700"
-                ></canvas>
-
-                <div class="divider"></div>
-
+            <div class="flex flex-col">
                 <!-- Performance stats -->
                 <div class="stats">
                     <div class="stat">
@@ -764,6 +741,42 @@
                         <div class="stat-value">{measuredTps.toFixed(0)}</div>
                     </div>
                 </div>
+
+                <!-- Tick rate slider -->
+                <legend class="fieldset-legend">
+                    Tick rate
+                    <span>{targetTps}</span>
+                </legend>
+                <input
+                    type="range"
+                    class="range"
+                    min="1"
+                    max="200"
+                    onclick={resetTps}
+                    bind:value={targetTps}
+                />
+                <p class="label">Simulation ticks per second</p>
+
+                <!-- Time step slider -->
+                <div
+                    class="tooltip tooltip-bottom"
+                    data-tip="Lower is slower, but more accurate"
+                >
+                    <legend class="fieldset-legend">
+                        Time step
+                        <span>{timestepTemp.toFixed(3)}</span>
+                    </legend>
+                </div>
+                <input
+                    type="range"
+                    class="range"
+                    min="0.001"
+                    max="0.02"
+                    step="0.001"
+                    onmouseup={resetShaders}
+                    bind:value={timestepTemp}
+                />
+                <p class="label">Simulation time step</p>
             </div>
         </div>
     </div>
