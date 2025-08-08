@@ -39,3 +39,22 @@
 
     {@render children()}
 </div>
+
+{#if !navigator.gpu}
+    <div class="toast toast-top toast-center my-10">
+        <div class="alert alert-error">
+            <div class="gap-12">
+                <h3 class="font-bold">Error</h3>
+                <span class="text-sm">This browser does not support WebGPU</span>
+            </div>
+            <a
+                class="btn btn-sm btn-soft"
+                href="https://caniuse.com/webgpu"
+                target="_blank"
+            >
+                See supported browsers
+            </a>
+            <button class="btn btn-sm btn-soft">Dismiss</button>
+        </div>
+    </div>
+{/if}
