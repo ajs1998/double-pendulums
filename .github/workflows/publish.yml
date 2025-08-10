@@ -1,58 +1,58 @@
 name: Publish site
 
 on:
-  push:
-    branches:
-      - main
+    push:
+        branches:
+            - main
 
-  # Allows you to run this workflow manually from the Actions tab on GitHub.
-  workflow_dispatch:
+    # Allows you to run this workflow manually from the Actions tab on GitHub.
+    workflow_dispatch:
 
 # Allow this job to clone the repo and create a page deployment
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+    contents: read
+    pages: write
+    id-token: write
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'yarn'
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '20'
+                  cache: 'yarn'
 
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
+            - name: Install dependencies
+              run: yarn install --frozen-lockfile
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-        with:
-          static_site_generator: sveltekit
+            - name: Setup Pages
+              uses: actions/configure-pages@v5
+              with:
+                  static_site_generator: sveltekit
 
-      - name: Build
-        run: yarn build
+            - name: Build
+              run: yarn build
 
-      - name: Upload Artifacts
-        uses: actions/upload-pages-artifact@v3
-        with:
-          # this should match the `pages` option in your adapter-static options
-          path: 'build/'
+            - name: Upload Artifacts
+              uses: actions/upload-pages-artifact@v3
+              with:
+                  # this should match the `pages` option in your adapter-static options
+                  path: 'build/'
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
+    deploy:
+        needs: build
+        runs-on: ubuntu-latest
 
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
 
-    steps:
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v4
+        steps:
+            - name: Deploy
+              id: deployment
+              uses: actions/deploy-pages@v4

@@ -30,10 +30,11 @@
         })
         .map(([path, csv]) => {
             const fileName = path.split('/').pop()!
-            const displayName = "Cyclic " + fileName.replace(
-                /CET-C(\d)(s?)\.csv/,
-                (_, num, s) => s ? `${num} shift 25%` : num
-            )
+            const displayName =
+                'Cyclic ' +
+                fileName.replace(/CET-C(\d)(s?)\.csv/, (_, num, s) =>
+                    s ? `${num} shift 25%` : num
+                )
             return { fileName, displayName, csv } as ColorCETMap
         })
     // console.log('Cyclic color maps:', cyclicColorMaps)
@@ -644,164 +645,133 @@
     }
 </script>
 
-<main class="m-4 flex flex-row gap-4">
-    <div class="flex flex-col">
-        <canvas
-            class="rounded-lg border border-gray-700"
-            width={fractalCanvasWidth}
-            height={fractalCanvasHeight}
-            bind:this={fractalCanvas}
-            onclick={fractalCanvasClick}
-        >
-        </canvas>
-    </div>
-
-    <div class="flex flex-col overflow-y-auto py-4 pr-4">
-        <div class="flex flex-row flex-wrap items-start gap-6">
-            <div class="flex flex-col gap-2">
-
-                <!-- Sampled pendulum display -->
-                <span class="label font-semibold">
-                    Sampled pendulum initial angles
-                </span>
-                <span class="label font-mono">
-                    ({(sampledPendulumLocation[0] >= 0 ? '+' : '') +
-                        sampledPendulumLocation[0].toFixed(5)} pi,
-                    {(sampledPendulumLocation[1] >= 0 ? '+' : '') +
-                        sampledPendulumLocation[1].toFixed(5)} pi)
-                </span>
+<main class="md:overflow-x-scroll">
+    <div class="md:p-4 md:flex md:gap-4">
+        <div class="md:flex-none">
+            <canvas
+                class="rounded-lg border border-gray-700"
+                width={fractalCanvasWidth}
+                height={fractalCanvasHeight}
+                bind:this={fractalCanvas}
+                onclick={fractalCanvasClick}
+            >
+            </canvas>
+        </div>
+        <div class="md:flex-1">
+            <!-- Sampled pendulum display -->
+            <div class="md:justify-items-center">
                 <canvas
                     width={sampledCanvasSize}
                     height={sampledCanvasSize}
                     bind:this={sampledCanvas}
                     class="rounded-lg border border-gray-700"
                 ></canvas>
-
-                <fieldset class="fieldset m-2">
-                    <!-- Click action buttons -->
-                    <legend class="fieldset-legend">Click action</legend>
-                    <div class="join join-vertical">
-                        {#each clickActions as clickAction}
-                            <input
-                                class="btn join-item"
-                                type="radio"
-                                name="clickAction"
-                                aria-label={clickAction.text}
-                                onclick={() =>
-                                    (selectedClickAction = clickAction)}
-                                checked={clickAction.id === 1}
-                            />
-                        {/each}
-                    </div>
-
-                    <!-- Zoom controls -->
-                    <legend class="fieldset-legend">Zoom controls</legend>
-                    <button
-                        class="btn btn-primary"
-                        onclick={reset}
-                    >
-                        Reset zoom
-                    </button>
-
-                    <!-- Color map selector -->
-                    <legend class="fieldset-legend">Color map</legend>
-                    <select
-                        class="select"
-                        bind:value={selectedColormap}
-                        onchange={resetShaders}
-                    >
-                        {#each cyclicColorMaps as cmap}
-                            <option value={cmap}>{cmap.displayName}</option>
-                        {/each}
-                    </select>
-                    <canvas
-                        class="mt-2 h-4 w-full rounded-lg border border-gray-700"
-                        bind:this={gradientCanvas}
-                    ></canvas>
-                    <a
-                        class="label link"
-                        href="https://colorcet.com/gallery.html"
-                        target="_blank"
-                    >
-                        ColorCET maps
-                    </a>
-
-                </fieldset>
+                <span class="label font-mono md:w-full md:justify-center">
+                    ({(sampledPendulumLocation[0] >= 0 ? '+' : '') +
+                        sampledPendulumLocation[0].toFixed(5)} pi,
+                    {(sampledPendulumLocation[1] >= 0 ? '+' : '') +
+                        sampledPendulumLocation[1].toFixed(5)} pi)
+                </span>
+                <span class="label md:w-full md:justify-center">
+                    Sampled pendulum initial angles
+                </span>
             </div>
 
-            <div class="flex flex-col">
-                <!-- Performance stats -->
-                <div class="stats">
-                    <div class="stat">
-                        <div class="stat-title">Frames per second</div>
-                        <div class="stat-value">{measuredFps.toFixed(0)}</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-title">Ticks per second</div>
-                        <div class="stat-value">{measuredTps.toFixed(0)}</div>
-                    </div>
+            <fieldset class="fieldset">
+                <!-- Click action buttons -->
+                <legend class="fieldset-legend">Click action</legend>
+                <div class="join join-vertical">
+                    {#each clickActions as clickAction}
+                        <input
+                            class="btn join-item"
+                            type="radio"
+                            name="clickAction"
+                            aria-label={clickAction.text}
+                            onclick={() => (selectedClickAction = clickAction)}
+                            checked={clickAction.id === 1}
+                        />
+                    {/each}
                 </div>
 
-                <!-- Tick rate slider -->
-                <legend class="fieldset-legend">
-                    Tick rate
-                    <span>{targetTps}</span>
-                </legend>
-                <input
-                    type="range"
-                    class="range"
-                    min="1"
-                    max="200"
-                    onclick={resetTps}
-                    bind:value={targetTps}
-                />
-                <p class="label">Simulation ticks per second</p>
+                <!-- Zoom controls -->
+                <legend class="fieldset-legend">Zoom controls</legend>
+                <button class="btn btn-primary" onclick={reset}>
+                    Reset zoom
+                </button>
 
-                <!-- Time step slider -->
-                <div
-                    class="tooltip tooltip-bottom"
-                    data-tip="Lower is slower, but more accurate"
+                <!-- Color map selector -->
+                <legend class="fieldset-legend">Color map</legend>
+                <select
+                    class="select md:w-full"
+                    bind:value={selectedColormap}
+                    onchange={resetShaders}
                 >
-                    <legend class="fieldset-legend">
-                        Time step
-                        <span>{timestepTemp.toFixed(3)}</span>
-                    </legend>
+                    {#each cyclicColorMaps as cmap}
+                        <option value={cmap}>{cmap.displayName}</option>
+                    {/each}
+                </select>
+                <canvas
+                    class="md:w-full h-4 rounded-lg border border-gray-700"
+                    bind:this={gradientCanvas}
+                ></canvas>
+                <a
+                    class="label link"
+                    href="https://colorcet.com/gallery.html"
+                    target="_blank"
+                >
+                    ColorCET maps
+                </a>
+            </fieldset>
+        </div>
+
+        <div class="md:flex-1">
+            <!-- Performance stats -->
+            <div class="stats md:flex md:justify-items-center">
+                <div class="stat">
+                    <div class="stat-title">Frames per second</div>
+                    <div class="stat-value">{measuredFps.toFixed(0)}</div>
                 </div>
-                <input
-                    type="range"
-                    class="range"
-                    min="0.001"
-                    max="0.02"
-                    step="0.001"
-                    onmouseup={resetShaders}
-                    bind:value={timestepTemp}
-                />
-                <p class="label">Simulation time step</p>
+                <div class="stat">
+                    <div class="stat-title">Ticks per second</div>
+                    <div class="stat-value">{measuredTps.toFixed(0)}</div>
+                </div>
             </div>
+
+            <!-- Tick rate slider -->
+            <legend class="fieldset-legend">
+                Tick rate
+                <span>{targetTps}</span>
+            </legend>
+            <input
+                type="range"
+                class="range md:w-full"
+                min="1"
+                max="200"
+                onclick={resetTps}
+                bind:value={targetTps}
+            />
+            <p class="label md:w-full">Simulation ticks per second</p>
+
+            <!-- Time step slider -->
+            <div
+                class="tooltip tooltip-bottom"
+                data-tip="Lower is slower, but more accurate"
+            >
+                <legend class="fieldset-legend">
+                    Time step
+                    <span>{timestepTemp.toFixed(3)}</span>
+                </legend>
+            </div>
+            <input
+                type="range"
+                class="range md:w-full"
+                min="0.001"
+                max="0.02"
+                step="0.001"
+                onmouseup={resetShaders}
+                bind:value={timestepTemp}
+            />
+            <p class="label md:w-full">Simulation time step</p>
         </div>
     </div>
 </main>
-
-<footer
-    class="footer sm:footer-horizontal footer-center bg-base-300 text-base-content p-4"
->
-    <aside>
-        <p>
-            Made by
-            <a href="https://github.com/ajs1998" class="link" target="_blank">
-                Alex Sweeney
-            </a>
-        </p>
-
-        <p>
-            Inspired by 2swap's YouTube video
-            <a
-                href="https://www.youtube.com/watch?v=dtjb2OhEQcU"
-                class="link"
-                target="_blank"
-            >
-                Double Pendulums are Chaoticn't
-            </a>
-        </p>
-    </aside>
-</footer>

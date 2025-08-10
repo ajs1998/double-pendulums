@@ -1,7 +1,7 @@
 import adapter from '@sveltejs/adapter-static'
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte'
 
-const prod = process.env.NODE_ENV === 'production';
+const prod = process.env.NODE_ENV === 'production'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -15,11 +15,11 @@ const config = {
         // See https://svelte.dev/docs/kit/adapters for more information about adapters.
         adapter: adapter(),
         prerender: {
-            entries: ['*']
+            entries: ['*'],
         },
-		paths: {
-			base: prod ? '/webgpu-experiments' : '',
-		},
+        paths: {
+            base: prod ? '/webgpu-experiments' : '',
+        },
     },
 }
 
