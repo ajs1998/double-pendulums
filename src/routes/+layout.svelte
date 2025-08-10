@@ -29,12 +29,59 @@
         <a class="btn btn-soft" href="{base}/pendulumFractal">Double Pendulum</a
         >
     </div>
-    <div class="navbar-end">
+    <div class="navbar-end gap-3">
         <a
             class="btn btn-soft"
             href="https://github.com/ajs1998/webgpu-experiments"
             target="_blank">GitHub</a
         >
+        <button class="btn btn-soft" popovertarget="popover-1" style="anchor-name:--anchor-1">
+            Theme
+            <svg
+                width="12px"
+                height="12px"
+                class="inline-block h-2 w-2 fill-current opacity-60"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 2048 2048">
+                <path d="M1799 349l242 241-1017 1017L7 590l242-241 775 775 775-775z"></path>
+            </svg>
+        </button>
+        <ul class="dropdown menu rounded-box bg-base-300 shadow-sm"
+            popover id="popover-1" style="position-anchor:--anchor-1">
+            <li>
+                <input
+                    type="radio"
+                    name="theme-dropdown"
+                    class="theme-controller w-full btn btn-sm justify-start"
+                    aria-label="Mocha"
+                    value="mocha"
+                    checked />
+            </li>
+            <li>
+                <input
+                    type="radio"
+                    name="theme-dropdown"
+                    class="theme-controller w-full btn btn-sm justify-start"
+                    aria-label="Macchiato"
+                    value="macchiato" />
+            </li>
+            <li>
+                <input
+                    type="radio"
+                    name="theme-dropdown"
+                    class="theme-controller w-full btn btn-sm justify-start"
+                    aria-label="Frappe"
+                    value="frappe" />
+            </li>
+            <li>
+                <input
+                    type="radio"
+                    name="theme-dropdown"
+                    class="theme-controller w-full btn btn-sm justify-start"
+                    aria-label="Latte"
+                    value="latte" />
+            </li>
+        </ul>
     </div>
 </div>
 

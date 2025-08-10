@@ -15,6 +15,18 @@
     "@jridgewell/gen-mapping" "^0.3.5"
     "@jridgewell/trace-mapping" "^0.3.24"
 
+"@catppuccin/daisyui@^2.1.1":
+  version "2.1.1"
+  resolved "https://registry.yarnpkg.com/@catppuccin/daisyui/-/daisyui-2.1.1.tgz#799b345b4f82b00f5106e8b67ea29a90aa4cebee"
+  integrity sha512-PrZttjj8kwfDBJ34sR+DN25Xtjvxx4T5p8uu/iiGYZR8UOsNwzMlO/alYDBwwTOLzP1NKLNRax09kCT39+QM+A==
+  dependencies:
+    "@catppuccin/palette" "^1.7.1"
+
+"@catppuccin/palette@^1.7.1":
+  version "1.7.1"
+  resolved "https://registry.yarnpkg.com/@catppuccin/palette/-/palette-1.7.1.tgz#c7cd165dcc1fc025a05ac138a4749b2279cf115e"
+  integrity sha512-aRc1tbzrevOTV7nFTT9SRdF26w/MIwT4Jwt4fDMc9itRZUDXCuEDBLyz4TQMlqO9ZP8mf5Hu4Jr6D03NLFc6Gw==
+
 "@emnapi/core@^1.4.3":
   version "1.4.5"
   resolved "https://registry.yarnpkg.com/@emnapi/core/-/core-1.4.5.tgz#bfbb0cbbbb9f96ec4e2c4fd917b7bbe5495ceccb"
