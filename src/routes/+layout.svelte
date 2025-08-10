@@ -23,8 +23,8 @@
 </script>
 
 <!-- Navbar -->
-<div class="navbar bg-base-200 md:px-3">
-    <div class="navbar-start md:gap-3">
+<div class="navbar bg-base-200 px-3">
+    <div class="navbar-start gap-3">
         <a class="btn btn-soft" href="{base}/">Home</a>
         <a class="btn btn-soft" href="{base}/pendulumFractal">Double Pendulum</a
         >

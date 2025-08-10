@@ -646,10 +646,10 @@
 </script>
 
 <main class="md:overflow-x-scroll">
-    <div class="md:p-4 md:flex md:gap-4">
-        <div class="md:flex-none">
+    <div class="md:p-4 flex md:flex-row flex-col md:gap-4">
+        <div class="flex-none">
             <canvas
-                class="rounded-lg border border-gray-700"
+                class="w-full md:rounded-lg border border-gray-700"
                 width={fractalCanvasWidth}
                 height={fractalCanvasHeight}
                 bind:this={fractalCanvas}
@@ -657,22 +657,22 @@
             >
             </canvas>
         </div>
-        <div class="md:flex-1">
+        <div class="flex-1 m-4 md:m-0">
             <!-- Sampled pendulum display -->
-            <div class="md:justify-items-center">
+            <div class="justify-items-center">
                 <canvas
                     width={sampledCanvasSize}
                     height={sampledCanvasSize}
                     bind:this={sampledCanvas}
                     class="rounded-lg border border-gray-700"
                 ></canvas>
-                <span class="label font-mono md:w-full md:justify-center">
+                <span class="label font-mono w-full justify-center">
                     ({(sampledPendulumLocation[0] >= 0 ? '+' : '') +
                         sampledPendulumLocation[0].toFixed(5)} pi,
                     {(sampledPendulumLocation[1] >= 0 ? '+' : '') +
                         sampledPendulumLocation[1].toFixed(5)} pi)
                 </span>
-                <span class="label md:w-full md:justify-center">
+                <span class="label w-full justify-center">
                     Sampled pendulum initial angles
                 </span>
             </div>
@@ -702,7 +702,7 @@
                 <!-- Color map selector -->
                 <legend class="fieldset-legend">Color map</legend>
                 <select
-                    class="select md:w-full"
+                    class="select w-full"
                     bind:value={selectedColormap}
                     onchange={resetShaders}
                 >
@@ -711,7 +711,7 @@
                     {/each}
                 </select>
                 <canvas
-                    class="md:w-full h-4 rounded-lg border border-gray-700"
+                    class="w-full h-4 rounded-lg border border-gray-700"
                     bind:this={gradientCanvas}
                 ></canvas>
                 <a
@@ -724,9 +724,9 @@
             </fieldset>
         </div>
 
-        <div class="md:flex-1">
+        <div class="flex-1 m-4 md:m-0">
             <!-- Performance stats -->
-            <div class="stats md:flex md:justify-items-center">
+            <div class="stats flex justify-items-center">
                 <div class="stat">
                     <div class="stat-title">Frames per second</div>
                     <div class="stat-value">{measuredFps.toFixed(0)}</div>
@@ -744,13 +744,13 @@
             </legend>
             <input
                 type="range"
-                class="range md:w-full"
+                class="range w-full"
                 min="1"
                 max="200"
                 onclick={resetTps}
                 bind:value={targetTps}
             />
-            <p class="label md:w-full">Simulation ticks per second</p>
+            <p class="label w-full">Simulation ticks per second</p>
 
             <!-- Time step slider -->
             <div
@@ -764,14 +764,14 @@
             </div>
             <input
                 type="range"
-                class="range md:w-full"
+                class="range w-full"
                 min="0.001"
                 max="0.02"
                 step="0.001"
                 onmouseup={resetShaders}
                 bind:value={timestepTemp}
             />
-            <p class="label md:w-full">Simulation time step</p>
+            <p class="label w-full">Simulation time step</p>
         </div>
     </div>
 </main>
