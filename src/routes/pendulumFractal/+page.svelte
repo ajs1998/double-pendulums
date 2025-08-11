@@ -645,11 +645,11 @@
     }
 </script>
 
-<main class="md:overflow-x-scroll">
-    <div class="md:p-4 flex md:flex-row flex-col md:gap-4">
+<main class="m-4 md:overflow-x-scroll">
+    <div class="flex flex-col md:flex-row md:gap-4 md:p-2">
         <div class="flex-none">
             <canvas
-                class="w-full md:rounded-lg border border-gray-700"
+                class="skeleton w-full border border-gray-700 md:rounded-lg"
                 width={fractalCanvasWidth}
                 height={fractalCanvasHeight}
                 bind:this={fractalCanvas}
@@ -657,16 +657,16 @@
             >
             </canvas>
         </div>
-        <div class="flex-1 m-4 md:m-0">
+        <div class="m-4 flex-2 md:m-0">
             <!-- Sampled pendulum display -->
             <div class="justify-items-center">
                 <canvas
                     width={sampledCanvasSize}
                     height={sampledCanvasSize}
                     bind:this={sampledCanvas}
-                    class="rounded-lg border border-gray-700"
+                    class="bg-base-200 justify-center rounded-lg border border-gray-700"
                 ></canvas>
-                <span class="label font-mono w-full justify-center">
+                <span class="label w-full justify-center font-mono">
                     ({(sampledPendulumLocation[0] >= 0 ? '+' : '') +
                         sampledPendulumLocation[0].toFixed(5)} pi,
                     {(sampledPendulumLocation[1] >= 0 ? '+' : '') +
@@ -711,7 +711,7 @@
                     {/each}
                 </select>
                 <canvas
-                    class="w-full h-4 rounded-lg border border-gray-700"
+                    class="h-4 w-full rounded-lg border border-gray-700"
                     bind:this={gradientCanvas}
                 ></canvas>
                 <a
@@ -724,7 +724,7 @@
             </fieldset>
         </div>
 
-        <div class="flex-1 m-4 md:m-0">
+        <div class="m-4 flex-1 md:m-0">
             <!-- Performance stats -->
             <div class="stats flex justify-items-center">
                 <div class="stat">
