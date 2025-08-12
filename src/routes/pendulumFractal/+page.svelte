@@ -174,9 +174,12 @@
         }
     }
 
-    const traceColor = getComputedStyle(document.documentElement)
-        .getPropertyValue('--color-base-content')
-        .trim() || '#fff';
+    let traceColor = '#fff'
+    $effect(() => {
+        traceColor = getComputedStyle(document.documentElement)
+            .getPropertyValue('--color-base-content')
+            .trim();
+    })
 
     onMount(async () => {
         root = await tgpu.init()
