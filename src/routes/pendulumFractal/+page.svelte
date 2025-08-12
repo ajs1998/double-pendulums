@@ -759,7 +759,7 @@
                 {#if targetTicksPerSecond === 0}
                     <span class="text-warning">Paused</span>
                 {:else}
-                    <span>{targetTicksPerSecond}</span>
+                    <span class="font-mono">{targetTicksPerSecond}</span>
                 {/if}
             </legend>
             <input
@@ -774,7 +774,7 @@
             <!-- Time step slider -->
             <legend class="fieldset-legend">
                 Time step
-                <span>{timestepTemp.toFixed(4)}</span>
+                <span class="font-mono">{timestepTemp.toFixed(4)}</span>
             </legend>
             <input
                 type="range"
