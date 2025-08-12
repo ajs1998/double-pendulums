@@ -37,7 +37,6 @@
                 )
             return { fileName, displayName, csv } as ColorCETMap
         })
-    // console.log('Cyclic color maps:', cyclicColorMaps)
 
     const fractalCanvasWidth = 720
     const fractalCanvasHeight = fractalCanvasWidth
@@ -45,16 +44,17 @@
 
     let selectedColormap = $state(cyclicColorMaps[11])
     let colormapCsv = $derived(selectedColormap.csv)
-    let targetTps = $state(200)
     let measuredTps = $state(0)
     let measuredFps = $state(0)
+    let targetTicksPerSecond = $state(60) // Configurable tick rate
+    let millisAccumulator = 0
+    let lastTickTime = performance.now()
     let zoomAmount = $state(1.0)
     let zoomFactor = $state(2.0)
     let zoomCenter = $state([0, 0])
-    let timestep = 0.01
+    let timestep = 0.001
     let timestepTemp = $state(timestep)
     let reset: () => void = $state(() => {})
-    let resetTps: () => void = $state(() => {})
     let resetInitialStates: () => void = $state(() => {})
     let resetShaders = $state(() => {})
     let root: TgpuRoot
@@ -436,24 +436,18 @@
                 resetInitialStates()
             }
 
-            let rollingAverageTps: RollingAverage
-            let resetTps = () => {
-                rollingAverageTps = new RollingAverage(5 * targetTps)
-            }
-            resetTps()
-
-            let tick = 0
-            function stepAndRender() {
+            function runComputePass() {
                 const encoder = device.createCommandEncoder()
-
-                // Compute pass
                 const computePass = encoder.beginComputePass()
                 computePass.setPipeline(computePipeline)
                 computePass.setBindGroup(0, computeBindGroup)
                 computePass.dispatchWorkgroups(gridSize, gridSize)
                 computePass.end()
+                device.queue.submit([encoder.finish()])
+            }
 
-                // Render pass
+            function runRenderPass() {
+                const encoder = device.createCommandEncoder()
                 const view = ctx.getCurrentTexture().createView()
                 const renderPass = encoder.beginRenderPass({
                     colorAttachments: [
@@ -465,65 +459,71 @@
                         },
                     ],
                 })
-
                 renderPass.setPipeline(renderPipeline)
                 renderPass.setVertexBuffer(0, squareBuffer.buffer)
                 renderPass.setBindGroup(0, renderBindGroup)
                 renderPass.draw(4, pixelCount)
                 renderPass.end()
-
                 device.queue.submit([encoder.finish()])
-
-                tick++
             }
 
-            let now = performance.now()
-            let start = now
+            let rollingAverageTps = new RollingAverage(5 * 60)
             let rollingAverageFps = new RollingAverage(5 * 60)
-            async function loop() {
-                now = performance.now()
-                let elapsedMillis = now - start
-                rollingAverageFps.push(1000 / elapsedMillis)
+
+            async function animationLoop() {
+                const now = performance.now()
+                const elapsedMillis = (now - lastTickTime)
+                lastTickTime = now
+                millisAccumulator += elapsedMillis
+
+                // Compute steps at fixed tick rate
+                let ticks = 0;
+                const millisPerTick = 1000 / targetTicksPerSecond
+                while (millisAccumulator >= millisPerTick) {
+                    runComputePass()
+                    millisAccumulator -= millisPerTick
+                    ticks++;
+                }
+                if (elapsedMillis > 0) {
+                    rollingAverageTps.push(ticks / (elapsedMillis / 1000))
+                }
+                measuredTps = rollingAverageTps.getAverage()
+
+                // Render
+                let renderStart = performance.now()
+                runRenderPass()
+                const drawElapsed = performance.now() - renderStart
+                if (elapsedMillis > 0) {
+                    rollingAverageFps.push(1000 / elapsedMillis)
+                }
                 measuredFps = rollingAverageFps.getAverage()
-
-                if (elapsedMillis > 1000 / targetTps) {
-                    measuredTps = rollingAverageTps.getAverage()
-                    start = now
-
-                    rollingAverageTps.push(1000 / elapsedMillis)
-                    stepAndRender()
-                }
-
+            
                 // Continuously update sampledPendulum from GPU buffer
-                // Use a persistent staging buffer for sampled pendulum reads
-                if (root && sampledPendulumXY) {
-                    const i =
-                        sampledPendulumXY[0] + sampledPendulumXY[1] * gridSize
-                    if (stateBuffer) {
-                        if (!sampledPendulumBuffer) return
-                        const readBuffer = sampledPendulumBuffer
-                        const commandEncoder = device.createCommandEncoder()
-                        commandEncoder.copyBufferToBuffer(
-                            stateBuffer.buffer,
-                            i * 4 * 4,
-                            readBuffer,
-                            0,
-                            4 * 4
-                        )
-                        device.queue.submit([commandEncoder.finish()])
-                        await readBuffer.mapAsync(GPUMapMode.READ)
-                        const arrayBuffer = readBuffer.getMappedRange()
-                        const f32 = new Float32Array(arrayBuffer)
-                        sampledPendulum = [f32[0], f32[2]]
-                        readBuffer.unmap()
-                    }
+                const i = sampledPendulumXY[0] + sampledPendulumXY[1] * gridSize
+                if (stateBuffer) {
+                    if (!sampledPendulumBuffer) return
+                    const readBuffer = sampledPendulumBuffer
+                    const commandEncoder = device.createCommandEncoder()
+                    commandEncoder.copyBufferToBuffer(
+                        stateBuffer.buffer,
+                        i * 4 * 4,
+                        readBuffer,
+                        0,
+                        4 * 4
+                    )
+                    device.queue.submit([commandEncoder.finish()])
+                    await readBuffer.mapAsync(GPUMapMode.READ)
+                    const arrayBuffer = readBuffer.getMappedRange()
+                    const f32 = new Float32Array(arrayBuffer)
+                    sampledPendulum = [f32[0], f32[2]]
+                    readBuffer.unmap()
                 }
-
-                animationFrameId = requestAnimationFrame(loop)
+            
                 drawSampledPendulum(sampledPendulum[0], sampledPendulum[1])
+                animationFrameId = requestAnimationFrame(animationLoop)
             }
 
-            animationFrameId = requestAnimationFrame(loop)
+            animationFrameId = requestAnimationFrame(animationLoop)
         }
         resetShaders()
     })
@@ -558,14 +558,11 @@
         const color1 = colorMap[angleToColorIdx(theta1)]
         const color2 = colorMap[angleToColorIdx(theta2)]
 
-        // Pendulum parameters
+        // Rendered pendulum parameters
         const margin = 20
-        const maxLength =
-            Math.min(sampledCanvas.width, sampledCanvas.height) / 2 - margin
-        const l1 = maxLength * 0.5,
-            l2 = maxLength * 0.5
-        const m1 = 8,
-            m2 = 8
+        const maxLength = Math.min(sampledCanvas.width, sampledCanvas.height) / 2 - margin
+        const l1 = maxLength * 0.5, l2 = maxLength * 0.5
+        const m1 = 8, m2 = 8
         const origin = {
             x: sampledCanvas.width / 2,
             y: sampledCanvas.height / 2,
@@ -737,41 +734,42 @@
                 </div>
             </div>
 
-            <!-- Tick rate slider -->
+            <!-- Compute steps per frame slider -->
             <legend class="fieldset-legend">
-                Tick rate
-                <span>{targetTps}</span>
+                Ticks per second
+                <span>{targetTicksPerSecond}</span>
             </legend>
             <input
                 type="range"
                 class="range w-full"
                 min="1"
-                max="200"
-                onclick={resetTps}
-                bind:value={targetTps}
+                max="5000"
+                bind:value={targetTicksPerSecond}
             />
-            <p class="label w-full">Simulation ticks per second</p>
+            <p class="label w-full">
+                Simulation steps per second
+            </p>
 
             <!-- Time step slider -->
+            <legend class="fieldset-legend">
+                Time step
+                <span>{timestepTemp.toFixed(4)}</span>
+            </legend>
+            <input
+                type="range"
+                class="range w-full"
+                min="0.0001"
+                max="0.01"
+                step="0.0001"
+                onmouseup={resetShaders}
+                bind:value={timestepTemp}
+            />
             <div
                 class="tooltip tooltip-bottom"
                 data-tip="Lower is slower, but more accurate"
             >
-                <legend class="fieldset-legend">
-                    Time step
-                    <span>{timestepTemp.toFixed(3)}</span>
-                </legend>
+                <p class="label w-full">Simulation time step</p>
             </div>
-            <input
-                type="range"
-                class="range w-full"
-                min="0.001"
-                max="0.02"
-                step="0.001"
-                onmouseup={resetShaders}
-                bind:value={timestepTemp}
-            />
-            <p class="label w-full">Simulation time step</p>
         </div>
     </div>
 </main>
