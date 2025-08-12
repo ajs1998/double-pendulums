@@ -10,6 +10,7 @@ struct Uniforms {
 
 struct Pixel {
     energy: vec2f, // kinetic_energy, potential_energy
+    initial_energy: f32, // initial kinetic_energy, initial potential_energy
     distance: f32, // distance between the 2 pendulums
 }
 
@@ -104,5 +105,6 @@ fn main(@builtin(global_invocation_id) pixel_id: vec3u) {
     let distance = sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2)) / maxDistance;
 
     let energy = compute_energy(next_state1);
-    pixels[pixel_index] = Pixel(energy, distance);
+    let initial_energy = pixels[pixel_index].initial_energy;
+    pixels[pixel_index] = Pixel(energy, initial_energy, distance);
 }

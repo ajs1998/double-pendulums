@@ -42,6 +42,11 @@
     const fractalCanvasHeight = fractalCanvasWidth
     const sampledCanvasSize = 250
 
+    let length1 = $state(1.0)
+    let length2 = $state(1.0)
+    let mass1 = $state(1.0)
+    let mass2 = $state(1.0)
+    let gravity = $state(10.0)
     let selectedColormap = $state(cyclicColorMaps[11])
     let colormapCsv = $derived(selectedColormap.csv)
     let measuredTps = $state(0)
@@ -54,6 +59,8 @@
     let zoomCenter = $state([0, 0])
     let timestep = 0.001
     let timestepTemp = $state(timestep)
+    let energyVisualizationMode : 'theta1' | 'deviation' = $state('theta1')
+    let visualizationModeBuffer: TgpuBuffer<typeof d.u32>;
     let reset: () => void = $state(() => {})
     let resetInitialStates: () => void = $state(() => {})
     let resetShaders = $state(() => {})
@@ -195,6 +202,7 @@
 
         // Track animation frame and resources for cleanup
         let animationFrameId: number | null = null
+        let simulationTimerId: number | null = null
         let cleanupFns: (() => void)[] = []
 
         resetShaders = () => {
@@ -202,6 +210,11 @@
             if (animationFrameId !== null) {
                 cancelAnimationFrame(animationFrameId)
                 animationFrameId = null
+            }
+            // Cancel previous simulation loop
+            if (simulationTimerId !== null) {
+                clearTimeout(simulationTimerId)
+                simulationTimerId = null
             }
             // Cleanup previous GPU resources
             cleanupFns.forEach((fn) => fn())
@@ -216,9 +229,7 @@
                 size: 4 * 4,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
             })
-            cleanupFns.push(() => {
-                if (sampledPendulumBuffer) sampledPendulumBuffer.destroy()
-            })
+            cleanupFns.push(() => { sampledPendulumBuffer.destroy() })
 
             const computeModule = device.createShaderModule({
                 code: computeShaderCode,
@@ -237,15 +248,28 @@
             const uniformBuffer = root
                 .createBuffer(uniformData, {
                     dt: timestep, // time step
-                    gravity: 10, // gravitational acceleration
-                    l1: 1.0, // length of first pendulum
-                    l2: 1.0, // length of second pendulum
-                    m1: 1.0, // mass of first pendulum
-                    m2: 1.0, // mass of second pendulum
+                    gravity: gravity, // gravitational acceleration
+                    l1: length1, // length of first pendulum
+                    l2: length2, // length of second pendulum
+                    m1: mass1, // mass of first pendulum
+                    m2: mass2, // mass of second pendulum
                     gridSize,
                 })
                 .$usage('uniform')
             cleanupFns.push(() => uniformBuffer.destroy())
+
+            const pixelsBufferStruct = d.arrayOf(
+                d.struct({
+                    energy: d.vec2f, // kinetic_energy, potential_energy
+                    initial_energy: d.f32, // total initial energy
+                    distance: d.f32, // distance between the 2 pendulums
+                }),
+                pixelCount
+            )
+            const pixelsBuffer = root
+                .createBuffer(pixelsBufferStruct)
+                .$usage('storage', 'vertex')
+            cleanupFns.push(() => pixelsBuffer.destroy())
 
             stateBuffer = root
                 .createBuffer(d.arrayOf(d.vec4f, pixelCount * 2))
@@ -253,6 +277,7 @@
             cleanupFns.push(() => stateBuffer.destroy())
 
             const initialStates: d.v4f[] = new Array(pixelCount * 2)
+            const initialEnergies = new Array(pixelCount)
             resetInitialStates = () => {
                 for (let x = 0; x < gridSize; x++) {
                     for (let y = 0; y < gridSize; y++) {
@@ -281,24 +306,27 @@
                             theta2 + deltaTheta2,
                             0
                         )
+                        let potential_energy = -(mass1 + mass2) * length1 * gravity * Math.cos(theta1) 
+                            - mass2 * length2 * gravity * Math.cos(theta2);
+                        initialEnergies[i] = d.f32(potential_energy)
                     }
                 }
                 stateBuffer.write(initialStates)
+                pixelsBuffer.write(initialEnergies.map(e => {
+                    return {
+                        energy: d.vec2f(0, 0),
+                        initial_energy: e,
+                        distance: 0.0
+                    };
+                }))
             }
             resetInitialStates()
 
-            const pixelsBufferStruct = d.arrayOf(
-                d.struct({
-                    energy: d.vec2f, // kinetic_energy, potential_energy
-                    distance: d.f32, // distance between the 2 pendulums
-                }),
-                pixelCount
-            )
-
-            const pixelsBuffer = root
-                .createBuffer(pixelsBufferStruct)
-                .$usage('storage', 'vertex')
-            cleanupFns.push(() => pixelsBuffer.destroy())
+            // Visualization mode uniform buffer
+            visualizationModeBuffer = root
+                .createBuffer(d.u32, energyVisualizationMode === 'theta1' ? 0 : 1)
+                .$usage('uniform')
+            cleanupFns.push(() => visualizationModeBuffer.destroy())
 
             const colorMap = loadColorMap(colormapCsv)
             const colorMapBuffer = root
@@ -382,6 +410,13 @@
                             type: 'read-only-storage',
                         },
                     },
+                    {
+                        binding: 4,
+                        visibility: GPUShaderStage.VERTEX,
+                        buffer: {
+                            type: 'uniform',
+                        },
+                    },
                 ],
             })
 
@@ -397,6 +432,7 @@
                     { binding: 1, resource: { buffer: stateBuffer.buffer } },
                     { binding: 2, resource: { buffer: pixelsBuffer.buffer } },
                     { binding: 3, resource: { buffer: colorMapBuffer.buffer } },
+                    { binding: 4, resource: { buffer: visualizationModeBuffer.buffer } },
                 ],
             })
 
@@ -406,8 +442,7 @@
                 }),
                 vertex: {
                     module: vertexModule,
-                    // entryPoint: 'main_distance',
-                    entryPoint: 'main_angles',
+                    entryPoint: 'main',
                     buffers: [
                         {
                             arrayStride: 2 * Uint32Array.BYTES_PER_ELEMENT,
@@ -496,7 +531,7 @@
                 }
                 measuredTps = rollingAverageTps.getAverage()
 
-                setTimeout(simulationLoop, 0) // Run as fast as possible
+                simulationTimerId = window.setTimeout(simulationLoop, 0) // Run as fast as possible
             }
 
             let lastRenderTime = 0
@@ -715,6 +750,33 @@
                     Reset zoom
                 </button>
 
+                <!-- Energy visualization mode toggle -->
+                <legend class="fieldset-legend">Visualization Mode</legend>
+                <div class="join join-horizontal">
+                    <input
+                        class="btn join-item"
+                        type="radio"
+                        name="visualizationMode"
+                        aria-label="Angle 1"
+                        onclick={() => {
+                            energyVisualizationMode = 'theta1';
+                            resetShaders()
+                        }}
+                        checked={energyVisualizationMode === 'theta1'}
+                    />
+                    <input
+                        class="btn join-item"
+                        type="radio"
+                        name="visualizationMode"
+                        aria-label="Energy deviation"
+                        onclick={() => {
+                            energyVisualizationMode = 'deviation';
+                            resetShaders()
+                        }}
+                        checked={energyVisualizationMode === 'deviation'}
+                    />
+                </div>
+                
                 <!-- Color map selector -->
                 <legend class="fieldset-legend">Color map</legend>
                 <select
