@@ -46,7 +46,7 @@
     let colormapCsv = $derived(selectedColormap.csv)
     let measuredTps = $state(0)
     let measuredFps = $state(0)
-    let targetTicksPerSecond = $state(60) // Configurable tick rate
+    let targetTicksPerSecond = $state(1000)
     let millisAccumulator = 0
     let lastTickTime = performance.now()
     let zoomAmount = $state(1.0)
@@ -173,6 +173,10 @@
             zoomIn(x, y)
         }
     }
+
+    const traceColor = getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-base-content')
+        .trim() || '#fff';
 
     onMount(async () => {
         root = await tgpu.init()
@@ -470,34 +474,43 @@
             let rollingAverageTps = new RollingAverage(5 * 60)
             let rollingAverageFps = new RollingAverage(5 * 60)
 
-            async function animationLoop() {
+            function simulationLoop() {
                 const now = performance.now()
-                const elapsedMillis = (now - lastTickTime)
+                const elapsedMillis = now - lastTickTime
                 lastTickTime = now
                 millisAccumulator += elapsedMillis
 
                 // Compute steps at fixed tick rate
-                let ticks = 0;
+                let ticks = 0
                 const millisPerTick = 1000 / targetTicksPerSecond
                 while (millisAccumulator >= millisPerTick) {
                     runComputePass()
                     millisAccumulator -= millisPerTick
-                    ticks++;
+                    ticks++
                 }
                 if (elapsedMillis > 0) {
                     rollingAverageTps.push(ticks / (elapsedMillis / 1000))
                 }
                 measuredTps = rollingAverageTps.getAverage()
 
+                setTimeout(simulationLoop, 0) // Run as fast as possible
+            }
+
+            let lastRenderTime = 0
+            async function renderLoop() {
+                const now = performance.now()
+                const elapsed = now - lastRenderTime
+                lastRenderTime = now
+
                 // Render
-                let renderStart = performance.now()
                 runRenderPass()
-                const drawElapsed = performance.now() - renderStart
-                if (elapsedMillis > 0) {
-                    rollingAverageFps.push(1000 / elapsedMillis)
+
+                // Correct FPS calculation: time between animation frames
+                if (elapsed > 0) {
+                    rollingAverageFps.push(1000 / elapsed)
                 }
                 measuredFps = rollingAverageFps.getAverage()
-            
+
                 // Continuously update sampledPendulum from GPU buffer
                 const i = sampledPendulumXY[0] + sampledPendulumXY[1] * gridSize
                 if (stateBuffer) {
@@ -518,12 +531,13 @@
                     sampledPendulum = [f32[0], f32[2]]
                     readBuffer.unmap()
                 }
-            
+
                 drawSampledPendulum(sampledPendulum[0], sampledPendulum[1])
-                animationFrameId = requestAnimationFrame(animationLoop)
+                animationFrameId = requestAnimationFrame(renderLoop)
             }
 
-            animationFrameId = requestAnimationFrame(animationLoop)
+            simulationLoop()
+            animationFrameId = requestAnimationFrame(renderLoop)
         }
         resetShaders()
     })
@@ -560,9 +574,12 @@
 
         // Rendered pendulum parameters
         const margin = 20
-        const maxLength = Math.min(sampledCanvas.width, sampledCanvas.height) / 2 - margin
-        const l1 = maxLength * 0.5, l2 = maxLength * 0.5
-        const m1 = 8, m2 = 8
+        const maxLength =
+            Math.min(sampledCanvas.width, sampledCanvas.height) / 2 - margin
+        const l1 = maxLength * 0.5,
+            l2 = maxLength * 0.5
+        const m1 = 8,
+            m2 = 8
         const origin = {
             x: sampledCanvas.width / 2,
             y: sampledCanvas.height / 2,
@@ -578,13 +595,12 @@
         trace.push({ x: x2, y: y2, alpha: 1.0 })
         if (trace.length > maxTraceLength) trace.shift()
 
-        // Draw trace (white)
         for (let i = 1; i < trace.length; ++i) {
             const prev = trace[i - 1]
             const curr = trace[i]
             ctx.save()
             ctx.globalAlpha = curr.alpha * (i / trace.length)
-            ctx.strokeStyle = '#fff'
+            ctx.strokeStyle = traceColor
             ctx.lineWidth = 2
             ctx.beginPath()
             ctx.moveTo(prev.x, prev.y)
@@ -725,30 +741,32 @@
             <!-- Performance stats -->
             <div class="stats flex justify-items-center">
                 <div class="stat">
-                    <div class="stat-title">Frames per second</div>
-                    <div class="stat-value">{measuredFps.toFixed(0)}</div>
+                    <div class="stat-title">Ticks per second</div>
+                    <div class="stat-value font-mono">{Math.abs(measuredTps).toFixed(0)}</div>
                 </div>
                 <div class="stat">
-                    <div class="stat-title">Ticks per second</div>
-                    <div class="stat-value">{measuredTps.toFixed(0)}</div>
+                    <div class="stat-title">Frames per second</div>
+                    <div class="stat-value font-mono">{measuredFps.toFixed(0)}</div>
                 </div>
             </div>
 
             <!-- Compute steps per frame slider -->
             <legend class="fieldset-legend">
                 Ticks per second
-                <span>{targetTicksPerSecond}</span>
+                {#if targetTicksPerSecond === 0}
+                    <span class="text-warning">Paused</span>
+                {:else}
+                    <span>{targetTicksPerSecond}</span>
+                {/if}
             </legend>
             <input
                 type="range"
                 class="range w-full"
-                min="1"
+                min="0"
                 max="5000"
                 bind:value={targetTicksPerSecond}
             />
-            <p class="label w-full">
-                Simulation steps per second
-            </p>
+            <p class="label w-full">Simulation steps per second</p>
 
             <!-- Time step slider -->
             <legend class="fieldset-legend">
