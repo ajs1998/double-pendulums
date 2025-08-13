@@ -37,14 +37,14 @@ fn main(
     if (visualization_mode == 0u) {
         // Theta1 visualization
         color_index = u32(fract(theta1 / (2 * PI)) * 255);
-    } else {
+    } else if (visualization_mode == 1u) {
         // Energy deviation
         let difference = abs(pixel.energy[0] + pixel.energy[1] - pixel.initial_energy);
         color_index = (u32(log(1 + difference) * 255)) % 256;
+    } else if (visualization_mode == 2u) {
+        // Sensitivity
+        color_index = (u32(log(1 + pixel.distance) * 255)) % 256;
     }
-
-    // Map distance to a color
-    // let color_index = u32(pixel.distance * 255);
 
     let color = color_map[color_index];
     return Out(vec4f(x, y, 0., 1.), vec4f(color.rgb, 1.));

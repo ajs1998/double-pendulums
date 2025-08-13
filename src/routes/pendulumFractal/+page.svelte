@@ -51,15 +51,14 @@
     let colormapCsv = $derived(selectedColormap.csv)
     let measuredTps = $state(0)
     let measuredFps = $state(0)
-    let targetTicksPerSecond = $state(1000)
+    let targetTicksPerSecond = $state(500)
     let millisAccumulator = 0
     let lastTickTime = performance.now()
     let zoomAmount = $state(1.0)
     let zoomFactor = $state(2.0)
     let zoomCenter = $state([0, 0])
-    let timestep = 0.001
+    let timestep = 0.005
     let timestepTemp = $state(timestep)
-    let energyVisualizationMode : 'theta1' | 'deviation' = $state('theta1')
     let visualizationModeBuffer: TgpuBuffer<typeof d.u32>;
     let reset: () => void = $state(() => {})
     let resetInitialStates: () => void = $state(() => {})
@@ -74,21 +73,37 @@
 
     let clickActions = $state([
         {
-            id: 1,
+            id: 0,
             text: `Sample pendulum`,
         },
         {
-            id: 2,
+            id: 1,
             text: `Zoom in`,
         },
     ])
+    let visualizationModes = $state([
+        {
+            id: 0,
+            label: `Angle 1`,
+        },
+        {
+            id: 1,
+            label: `Energy loss`,
+        },
+        {
+            id: 2,
+            label: `Sensitivity`,
+        },
+    ])
+
     let selectedClickAction = $state(clickActions[0])
+    let selectedVisualizationMode = $state(visualizationModes[0])
     let sampledPendulumXY = $state([
         Math.floor(gridSize / 2),
         Math.floor(gridSize / 2),
     ])
     let sampledPendulumLocation = $state([0, 0])
-    let sampledPendulum = $state([0, 0])
+    let sampledPendulum = $state([0, 0, 0, 0])
     let stateBuffer: TgpuBuffer<d.WgslArray<d.Vec4f>> & StorageFlag
 
     function getXYCoordinates(e: MouseEvent) {
@@ -118,6 +133,7 @@
 
         // Reset the sampled pendulum to the new zoom center
         sampledPendulumXY = [x, y]
+        sampledPendulumLocation = [theta1 / Math.PI, theta2 / Math.PI]
         samplePendulum(sampledPendulumXY[0], sampledPendulumXY[1])
         resetInitialStates()
     }
@@ -134,12 +150,6 @@
     }
 
     async function samplePendulum(x: number, y: number) {
-        const [theta1, theta2] = getThetaCoordinates(x, y)
-        sampledPendulumXY = [x, y]
-        sampledPendulumLocation = [theta1 / Math.PI, theta2 / Math.PI]
-
-        // Read theta1/theta2 from GPU state buffer for the selected pixel
-        if (!root) return
         const device = root.device
         const i = x + y * gridSize
 
@@ -159,12 +169,10 @@
             16
         )
         device.queue.submit([commandEncoder.finish()])
-
         await readBuffer.mapAsync(GPUMapMode.READ)
-        const arrayBuffer = readBuffer.getMappedRange()
-        const f32 = new Float32Array(arrayBuffer)
-        sampledPendulum = [f32[0], f32[2]]
-        trace = []
+        const sampledPendulumStateBuffer = readBuffer.getMappedRange()
+        const sampledPendulumState = new Float32Array(sampledPendulumStateBuffer)
+        sampledPendulum = [sampledPendulumState[0], sampledPendulumState[1], sampledPendulumState[2], sampledPendulumState[3]]
         readBuffer.unmap()
         readBuffer.destroy()
     }
@@ -174,19 +182,16 @@
             return
         }
         const { x, y } = getXYCoordinates(e)
-        if (selectedClickAction.id === 1) {
+        if (selectedClickAction.id === 0) {
+            const [theta1, theta2] = getThetaCoordinates(x, y)
+            sampledPendulumXY = [x, y]
+            sampledPendulumLocation = [theta1 / Math.PI, theta2 / Math.PI]
             samplePendulum(x, y)
-        } else if (selectedClickAction.id === 2) {
+            trace = []
+        } else if (selectedClickAction.id === 1) {
             zoomIn(x, y)
         }
     }
-
-    let traceColor = '#fff'
-    $effect(() => {
-        traceColor = getComputedStyle(document.documentElement)
-            .getPropertyValue('--color-base-content')
-            .trim();
-    })
 
     onMount(async () => {
         root = await tgpu.init()
@@ -223,13 +228,6 @@
             trace = []
 
             drawGradient()
-
-            // Create persistent sampled pendulum buffer
-            const sampledPendulumBuffer = device.createBuffer({
-                size: 4 * 4,
-                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-            })
-            cleanupFns.push(() => { sampledPendulumBuffer.destroy() })
 
             const computeModule = device.createShaderModule({
                 code: computeShaderCode,
@@ -319,12 +317,13 @@
                         distance: 0.0
                     };
                 }))
+                trace = []
             }
             resetInitialStates()
 
             // Visualization mode uniform buffer
             visualizationModeBuffer = root
-                .createBuffer(d.u32, energyVisualizationMode === 'theta1' ? 0 : 1)
+                .createBuffer(d.u32, selectedVisualizationMode.id)
                 .$usage('uniform')
             cleanupFns.push(() => visualizationModeBuffer.destroy())
 
@@ -550,27 +549,8 @@
                 measuredFps = rollingAverageFps.getAverage()
 
                 // Continuously update sampledPendulum from GPU buffer
-                const i = sampledPendulumXY[0] + sampledPendulumXY[1] * gridSize
-                if (stateBuffer) {
-                    if (!sampledPendulumBuffer) return
-                    const readBuffer = sampledPendulumBuffer
-                    const commandEncoder = device.createCommandEncoder()
-                    commandEncoder.copyBufferToBuffer(
-                        stateBuffer.buffer,
-                        i * 4 * 4,
-                        readBuffer,
-                        0,
-                        4 * 4
-                    )
-                    device.queue.submit([commandEncoder.finish()])
-                    await readBuffer.mapAsync(GPUMapMode.READ)
-                    const arrayBuffer = readBuffer.getMappedRange()
-                    const f32 = new Float32Array(arrayBuffer)
-                    sampledPendulum = [f32[0], f32[2]]
-                    readBuffer.unmap()
-                }
-
-                drawSampledPendulum(sampledPendulum[0], sampledPendulum[1])
+                samplePendulum(sampledPendulumXY[0], sampledPendulumXY[1])
+                drawSampledPendulum(sampledPendulum[0], sampledPendulum[1], sampledPendulum[2], sampledPendulum[3])
                 animationFrameId = requestAnimationFrame(renderLoop)
             }
 
@@ -589,7 +569,7 @@
     const maxTraceLength = 1000
     const fadeStep = 0.999 // fade factor per frame
 
-    function drawSampledPendulum(theta1: number, theta2: number) {
+    function drawSampledPendulum(theta1: number, omega1: number, theta2: number, omega2: number) {
         if (!sampledCanvas) return
         const ctx = sampledCanvas.getContext('2d')
         if (!ctx) return
@@ -598,7 +578,7 @@
         let colorMap = loadColorMap(colormapCsv)
         const cmapLen = colorMap.length
 
-        function angleToColorIdx(theta: number) {
+        function angleToColorIndex(theta: number) {
             let norm = (((theta / (2 * Math.PI)) % 1) + 1) % 1
             return Math.floor(norm * (cmapLen - 1))
         }
@@ -607,8 +587,15 @@
             return `rgb(${Math.round(arr[0] * 255)},${Math.round(arr[1] * 255)},${Math.round(arr[2] * 255)})`
         }
 
-        const color1 = colorMap[angleToColorIdx(theta1)]
-        const color2 = colorMap[angleToColorIdx(theta2)]
+        let baseContentColor = getComputedStyle(document.documentElement)
+                .getPropertyValue('--color-base-content')
+                .trim();
+        let color1 = baseContentColor
+        let color2 = baseContentColor
+        let traceColor = color1
+        if (selectedVisualizationMode.id === 0) {
+            color1 = rgb(colorMap[angleToColorIndex(theta1)])
+        }
 
         // Rendered pendulum parameters
         const margin = 20
@@ -651,7 +638,7 @@
 
         // Draw first arm
         ctx.globalAlpha = 1.0
-        ctx.strokeStyle = rgb(color1)
+        ctx.strokeStyle = color1
         ctx.lineWidth = 3
         ctx.beginPath()
         ctx.moveTo(origin.x, origin.y)
@@ -659,7 +646,7 @@
         ctx.stroke()
 
         // Draw second arm
-        ctx.strokeStyle = rgb(color2)
+        ctx.strokeStyle = color2
         ctx.lineWidth = 3
         ctx.beginPath()
         ctx.moveTo(x1, y1)
@@ -667,13 +654,13 @@
         ctx.stroke()
 
         // Draw first bob
-        ctx.fillStyle = rgb(color1)
+        ctx.fillStyle = color1
         ctx.beginPath()
         ctx.arc(x1, y1, m1, 0, 2 * Math.PI)
         ctx.fill()
 
         // Draw second bob
-        ctx.fillStyle = rgb(color2)
+        ctx.fillStyle = color2
         ctx.beginPath()
         ctx.arc(x2, y2, m2, 0, 2 * Math.PI)
         ctx.fill()
@@ -715,7 +702,7 @@
                     width={sampledCanvasSize}
                     height={sampledCanvasSize}
                     bind:this={sampledCanvas}
-                    class="bg-base-200 justify-center rounded-lg border border-gray-700"
+                    class="bg-base-300 justify-center rounded-lg border border-gray-700"
                 ></canvas>
                 <span class="label w-full justify-center font-mono">
                     ({(sampledPendulumLocation[0] >= 0 ? '+' : '') +
@@ -739,7 +726,7 @@
                             name="clickAction"
                             aria-label={clickAction.text}
                             onclick={() => (selectedClickAction = clickAction)}
-                            checked={clickAction.id === 1}
+                            checked={selectedClickAction === clickAction}
                         />
                     {/each}
                 </div>
@@ -753,28 +740,27 @@
                 <!-- Energy visualization mode toggle -->
                 <legend class="fieldset-legend">Visualization Mode</legend>
                 <div class="join join-horizontal">
-                    <input
-                        class="btn join-item"
-                        type="radio"
-                        name="visualizationMode"
-                        aria-label="Angle 1"
-                        onclick={() => {
-                            energyVisualizationMode = 'theta1';
-                            resetShaders()
-                        }}
-                        checked={energyVisualizationMode === 'theta1'}
-                    />
-                    <input
-                        class="btn join-item"
-                        type="radio"
-                        name="visualizationMode"
-                        aria-label="Energy deviation"
-                        onclick={() => {
-                            energyVisualizationMode = 'deviation';
-                            resetShaders()
-                        }}
-                        checked={energyVisualizationMode === 'deviation'}
-                    />
+                    {#each visualizationModes as visualizationMode}
+                        <input
+                            class="btn join-item"
+                            type="radio"
+                            name="visualizationMode"
+                            aria-label={visualizationMode.label}
+                            onclick={() => {
+                                selectedVisualizationMode = visualizationMode
+                                if (visualizationMode.id === 0) {
+                                    selectedColormap = cyclicColorMaps[11]
+                                } else if (visualizationMode.id === 1) {
+                                    selectedColormap = cyclicColorMaps[9]
+                                } else if (visualizationMode.id === 2) {
+                                    // TODO Linear color map
+                                    selectedColormap = cyclicColorMaps[9]
+                                }
+                                resetShaders()
+                            }}
+                            checked={selectedVisualizationMode === visualizationMode}
+                        />
+                    {/each}
                 </div>
                 
                 <!-- Color map selector -->
