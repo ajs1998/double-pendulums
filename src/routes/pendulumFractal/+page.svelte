@@ -11,6 +11,37 @@
     import fragmentShaderCode from '$lib/shaders/pendulumFractal/frag.wgsl?raw'
     import { RollingAverage } from '$lib/RollingAverage'
 
+    const fractalCanvasWidth = 720
+    const fractalCanvasHeight = fractalCanvasWidth
+    const sampledCanvasSize = 250
+
+    let length1 = $state(1.0)
+    let length2 = $state(1.0)
+    let mass1 = $state(1.0)
+    let mass2 = $state(1.0)
+    let gravity = $state(10.0)
+    let measuredTps = $state(0)
+    let measuredFps = $state(0)
+    let targetTicksPerSecond = $state(500)
+    let millisAccumulator = 0
+    let lastTickTime = performance.now()
+    let zoomAmount = $state(1.0)
+    let zoomFactor = $state(2.0)
+    let zoomCenter = $state([0, 0])
+    let timestep = 0.005
+    let timestepTemp = $state(timestep)
+    let visualizationModeBuffer: TgpuBuffer<typeof d.u32>;
+    let reset: () => void = $state(() => {})
+    let resetInitialStates: () => void = $state(() => {})
+    let resetShaders = $state(() => {})
+    let root: TgpuRoot
+    let fractalCanvas: HTMLCanvasElement
+    let sampledCanvas: HTMLCanvasElement
+    let gradientCanvas: HTMLCanvasElement
+
+    let gridSize = fractalCanvasWidth
+    const pixelCount = gridSize * gridSize
+
     interface ColorCETMap {
         fileName: string
         displayName: string
@@ -38,38 +69,8 @@
             return { fileName, displayName, csv } as ColorCETMap
         })
 
-    const fractalCanvasWidth = 720
-    const fractalCanvasHeight = fractalCanvasWidth
-    const sampledCanvasSize = 250
-
-    let length1 = $state(1.0)
-    let length2 = $state(1.0)
-    let mass1 = $state(1.0)
-    let mass2 = $state(1.0)
-    let gravity = $state(10.0)
     let selectedColormap = $state(cyclicColorMaps[11])
     let colormapCsv = $derived(selectedColormap.csv)
-    let measuredTps = $state(0)
-    let measuredFps = $state(0)
-    let targetTicksPerSecond = $state(500)
-    let millisAccumulator = 0
-    let lastTickTime = performance.now()
-    let zoomAmount = $state(1.0)
-    let zoomFactor = $state(2.0)
-    let zoomCenter = $state([0, 0])
-    let timestep = 0.005
-    let timestepTemp = $state(timestep)
-    let visualizationModeBuffer: TgpuBuffer<typeof d.u32>;
-    let reset: () => void = $state(() => {})
-    let resetInitialStates: () => void = $state(() => {})
-    let resetShaders = $state(() => {})
-    let root: TgpuRoot
-    let fractalCanvas: HTMLCanvasElement
-    let sampledCanvas: HTMLCanvasElement
-    let gradientCanvas: HTMLCanvasElement
-
-    let gridSize = fractalCanvasWidth
-    const pixelCount = gridSize * gridSize
 
     let clickActions = $state([
         {
@@ -81,6 +82,7 @@
             text: `Zoom in`,
         },
     ])
+
     let visualizationModes = $state([
         {
             id: 0,
@@ -104,7 +106,7 @@
     ])
     let sampledPendulumLocation = $state([0, 0])
     let sampledPendulum = $state([0, 0, 0, 0])
-    let stateBuffer: TgpuBuffer<d.WgslArray<d.Vec4f>> & StorageFlag
+    let stateBuffer: TgpuBuffer<d.WgslArray<d.Vec4f>>
 
     function getXYCoordinates(e: MouseEvent) {
         const rect = fractalCanvas.getBoundingClientRect()
@@ -154,26 +156,20 @@
         const i = x + y * gridSize
 
         // Create a staging buffer to read back the state
-        const readBuffer = device.createBuffer({
-            size: 4 * 4, // vec4f = 4 floats = 16 bytes
-            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-        })
+        const readBuffer = root
+            .createBuffer(d.vec4f)
 
         // Copy the state for the selected pixel (theta1, omega1, theta2, omega2)
         const commandEncoder = device.createCommandEncoder()
         commandEncoder.copyBufferToBuffer(
             stateBuffer.buffer,
             i * 16, // offset in bytes
-            readBuffer,
+            readBuffer.buffer,
             0,
             16
         )
         device.queue.submit([commandEncoder.finish()])
-        await readBuffer.mapAsync(GPUMapMode.READ)
-        const sampledPendulumStateBuffer = readBuffer.getMappedRange()
-        const sampledPendulumState = new Float32Array(sampledPendulumStateBuffer)
-        sampledPendulum = [sampledPendulumState[0], sampledPendulumState[1], sampledPendulumState[2], sampledPendulumState[3]]
-        readBuffer.unmap()
+        sampledPendulum = await readBuffer.read()
         readBuffer.destroy()
     }
 
