@@ -1,6 +1,6 @@
 @import 'tailwindcss';
 @plugin "daisyui" {
-    themes: false;
+    themes: dark --default;
 }
 @plugin "./catppuccinTheme.mocha.ts";
 @plugin "./catppuccinTheme.macchiato.ts";

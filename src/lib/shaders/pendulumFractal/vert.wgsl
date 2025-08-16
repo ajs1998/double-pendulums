@@ -1,7 +1,7 @@
 struct Pixel {
-    energy: vec2f, // (kinetic_energy, potential_energy)
-    initial_energy: f32, // initial kinetic_energy, initial potential_energy
-    distance: f32, // distance between the 2 pendulums
+    energy: vec2f,
+    initial_energy: f32,
+    distance: f32,
 }
 
 @group(0) @binding(0) var<uniform> grid_size: u32;
@@ -38,12 +38,14 @@ fn main(
         // Theta1 visualization
         color_index = u32(fract(theta1 / (2 * PI)) * 255);
     } else if (visualization_mode == 1u) {
+        // Theta2 visualization
+        color_index = u32(fract(theta2 / (2 * PI)) * 255);
+    } else if (visualization_mode == 2u) {
         // Sensitivity
         color_index = (u32(pixel.distance * 255)) % 256;
-    } else if (visualization_mode == 2u) {
-        // Energy deviation
-        let difference = abs(pixel.energy[0] + pixel.energy[1] - pixel.initial_energy);
-        color_index = (u32(log(1 + difference) * 255)) % 256;
+    } else if (visualization_mode == 3u) {
+        // Energy loss
+        color_index = u32((1 - ((pixel.energy[0] + pixel.energy[1]) / pixel.initial_energy)) * 255) % 256;
     }
 
     let color = color_map[color_index];

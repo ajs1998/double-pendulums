@@ -10,8 +10,8 @@ struct Uniforms {
 
 struct Pixel {
     energy: vec2f, // kinetic_energy, potential_energy
-    initial_energy: f32, // initial kinetic_energy, initial potential_energy
-    distance: f32, // distance between the 2 pendulums
+    initial_energy: f32,
+    distance: f32, // distance to the initially perturbed pendulum
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;

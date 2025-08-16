@@ -14,6 +14,8 @@
     const fractalCanvasWidth = 720
     const fractalCanvasHeight = fractalCanvasWidth
     const sampledCanvasSize = 250
+    const defaultCyclicColorMap = cyclicColorMaps[11]
+    const defaultLinearColorMap = linearColorMaps[15]
 
     let length1 = $state(1.0)
     let length2 = $state(1.0)
@@ -32,7 +34,7 @@
     let timestepTemp = $state(timestep)
     let visualizationModeBuffer: TgpuBuffer<typeof d.u32>
     let resetZoom: () => void = $state(() => {})
-    let resetInitialStates: () => void = $state(() => {})
+    let resetPendulums: () => void = $state(() => {})
     let resetShaders = $state(() => {})
     let root: TgpuRoot
     let fractalCanvas: HTMLCanvasElement
@@ -48,37 +50,61 @@
 
     interface ClickAction {
         id: number
-        text: string
+        name: string
     }
 
     let clickActions: ClickAction[] = $state([
         {
             id: 0,
-            text: `Sample pendulum`,
+            name: `Sample pendulum`,
         },
         {
             id: 1,
-            text: `Zoom in`,
+            name: `Zoom in`,
+        },
+        {
+            id: 2,
+            name: `Zoom out`,
+        },
+    ])
+
+    interface ResetControl {
+        name: string
+        onclick: () => void
+    }
+
+    let resetControls = $state([
+        {
+            name: `Reset pendulums`,
+            onclick: () => resetPendulums(),
+        },
+        {
+            name: `Reset zoom`,
+            onclick: () => resetZoom(),
         },
     ])
 
     interface VisualizationMode {
         id: number
-        label: string
+        name: string
     }
 
     let visualizationModes: VisualizationMode[] = $state([
         {
             id: 0,
-            label: `Angle 1`,
+            name: `Angle 1`,
         },
         {
             id: 1,
-            label: `Sensitivity`,
+            name: `Angle 2`,
         },
         {
             id: 2,
-            label: `Energy loss`,
+            name: `Sensitivity`,
+        },
+        {
+            id: 3,
+            name: `Energy loss`,
         },
     ])
 
@@ -112,16 +138,24 @@
         return [theta1, theta2]
     }
 
-    function zoomIn(x: number, y: number) {
+    function zoom(x: number, y: number, factor: number) {
         const [theta1, theta2] = getThetaCoordinates(x, y)
-        zoomAmount *= zoomFactor
+        zoomAmount *= factor
         zoomCenter = [theta1, theta2]
 
         // Reset the sampled pendulum to the new zoom center
         sampledPendulumXY = [x, y]
         sampledPendulumLocation = [theta1 / Math.PI, theta2 / Math.PI]
         samplePendulum(sampledPendulumXY[0], sampledPendulumXY[1])
-        resetInitialStates()
+        resetPendulums()
+    }
+
+    function zoomIn(x: number, y: number) {
+        zoom(x, y, zoomFactor)
+    }
+
+    function zoomOut(x: number, y: number) {
+        zoom(x, y, 1 / zoomFactor)
     }
 
     function loadColorMap(csv: string) {
@@ -169,6 +203,8 @@
             trace = []
         } else if (selectedClickAction.id === 1) {
             zoomIn(x, y)
+        } else if (selectedClickAction.id === 2) {
+            zoomOut(x, y)
         }
     }
 
@@ -255,7 +291,7 @@
 
             const initialStates: d.v4f[] = new Array(pixelCount * 2)
             const initialEnergies = new Array(pixelCount)
-            resetInitialStates = () => {
+            resetPendulums = () => {
                 for (let x = 0; x < gridSize; x++) {
                     for (let y = 0; y < gridSize; y++) {
                         const i = x + y * gridSize
@@ -272,7 +308,7 @@
 
                         // Perturb the second pendulum slightly in phase space
                         // Perturbation amount in pixel units
-                        const perturbation = 0.05
+                        const perturbation = 0.5
                         const r = Math.PI * (2 / (gridSize - 1)) * perturbation
                         const angle = Math.random() * 2 * Math.PI
                         const deltaTheta1 = r * Math.cos(angle)
@@ -304,7 +340,7 @@
                 )
                 trace = []
             }
-            resetInitialStates()
+            resetPendulums()
 
             // Visualization mode uniform buffer
             visualizationModeBuffer = root
@@ -462,8 +498,7 @@
             resetZoom = () => {
                 zoomCenter = [0, 0]
                 zoomAmount = 1.0
-                sampledPendulumLocation = [0, 0]
-                resetInitialStates()
+                resetPendulums()
             }
 
             function runComputePass() {
@@ -592,8 +627,12 @@
         let color1 = baseContentColor
         let color2 = baseContentColor
         let traceColor = color1
+
+        // Change arm color for Theta1 and Theta2 modes
         if (selectedVisualizationMode.id === 0) {
             color1 = rgb(colorMap[angleToColorIndex(theta1)])
+        } else if (selectedVisualizationMode.id === 1) {
+            color2 = rgb(colorMap[angleToColorIndex(theta2)])
         }
 
         // Rendered pendulum parameters
@@ -683,14 +722,11 @@
         selectedClickAction = clickAction
     }
 
-    function onSelectVisualizationMode(visualizationMode: VisualizationMode) {
-        selectedVisualizationMode = visualizationMode
-        if (visualizationMode.id === 0) {
-            selectedColormap = cyclicColorMaps[11]
-        } else if (visualizationMode.id === 1) {
-            selectedColormap = linearColorMaps[15]
-        } else if (visualizationMode.id === 2) {
-            selectedColormap = linearColorMaps[15]
+    function onSelectVisualizationMode() {
+        if (selectedVisualizationMode.id === 0 || selectedVisualizationMode.id === 1) {
+            selectedColormap = defaultCyclicColorMap
+        } else if (selectedVisualizationMode.id === 2 || selectedVisualizationMode.id === 3) {
+            selectedColormap = defaultLinearColorMap
         }
         resetShaders()
     }
@@ -707,11 +743,11 @@
     </div>
 {/snippet}
 
-<main class="m-4 md:overflow-x-scroll">
+<main class="md:m-2 md:overflow-x-scroll">
     <div class="flex flex-col md:flex-row md:gap-4 md:p-2">
         <div class="flex-none">
             <canvas
-                class="skeleton w-full border border-gray-700 md:rounded-lg"
+                class="skeleton w-full border rounded-lg border-gray-700"
                 width={fractalCanvasWidth}
                 height={fractalCanvasHeight}
                 bind:this={fractalCanvas}
@@ -719,7 +755,7 @@
             >
             </canvas>
         </div>
-        <div class="m-4 flex-1 md:m-0">
+        <div class="m-2 flex-1">
             <!-- Sampled pendulum display -->
             <div class="justify-items-center">
                 <canvas
@@ -748,35 +784,38 @@
                             class="btn join-item"
                             type="radio"
                             name="clickAction"
-                            aria-label={clickAction.text}
+                            aria-label={clickAction.name}
                             onclick={() => onSelectClickAction(clickAction)}
                             checked={selectedClickAction === clickAction}
                         />
                     {/each}
                 </div>
 
-                <!-- Zoom controls -->
-                <legend class="fieldset-legend">Zoom controls</legend>
-                <button class="btn btn-primary" onclick={resetZoom}>
-                    Reset zoom
-                </button>
-
-                <!-- Energy visualization mode toggle -->
-                <legend class="fieldset-legend">Visualization Mode</legend>
-                <div class="join join-horizontal">
-                    {#each visualizationModes as visualizationMode}
+                <!-- Reset controls -->
+                <legend class="fieldset-legend">Reset controls</legend>
+                <div class="join join-vertical">
+                    {#each resetControls as resetControl}
                         <input
-                            class="btn join-item"
+                            class="btn join-item btn-primary"
                             type="radio"
-                            name="visualizationMode"
-                            aria-label={visualizationMode.label}
-                            onclick={() =>
-                                onSelectVisualizationMode(visualizationMode)}
-                            checked={selectedVisualizationMode ===
-                                visualizationMode}
+                            name="resetControls"
+                            aria-label={resetControl.name}
+                            onclick={resetControl.onclick}
                         />
                     {/each}
                 </div>
+
+                <!-- Visualization mode selector -->
+                <legend class="fieldset-legend">Visualization Mode</legend>
+                <select
+                    class="select w-full"
+                    bind:value={selectedVisualizationMode}
+                    onchange={() => onSelectVisualizationMode()}
+                >
+                    {#each visualizationModes as visualizationMode}
+                        <option value={visualizationMode}>{visualizationMode.name}</option>
+                    {/each}
+                </select>
 
                 <!-- Color map selector -->
                 <legend class="fieldset-legend">Color map</legend>
@@ -793,6 +832,19 @@
                     class="h-4 w-full rounded-lg border border-gray-700"
                     bind:this={gradientCanvas}
                 ></canvas>
+                <div class="flex justify-between text-xs label tabular-nums font-mono">
+                    {#if selectedVisualizationMode.id === 0 || selectedVisualizationMode.id === 1}
+                        <span>0</span>
+                        <span>+&pi;/2</span>
+                        <span>&#x00B1;pi</span>
+                        <span>+&pi;/2</span>
+                        <span>0</span>
+                    {:else if selectedVisualizationMode.id === 2 || selectedVisualizationMode.id === 3}
+                        <span>0</span>
+                        <span>0.5</span>
+                        <span>1</span>
+                    {/if}
+                </div>
                 <a
                     class="label link"
                     href="https://colorcet.com/gallery.html"
@@ -803,7 +855,7 @@
             </fieldset>
         </div>
 
-        <div class="m-4 flex-1 md:m-0">
+        <div class="m-2 flex-1 md:m-0">
             <!-- Performance stats -->
             <div class="stats flex justify-items-center">
                 {@render stat('Ticks / sec', Math.abs(measuredTps).toFixed(0))}
@@ -846,7 +898,7 @@
                 class="tooltip tooltip-bottom"
                 data-tip="Lower is slower, but more accurate"
             >
-                <p class="label w-full">Simulation time step</p>
+                <p class="label w-full">4th order RK integration time step</p>
             </div>
         </div>
     </div>

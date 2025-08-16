@@ -1,9 +1,7 @@
 <script lang="ts">
     import '../app.css'
-    import { base } from '$app/paths'
     import { onMount } from 'svelte'
     import tgpu from 'typegpu'
-    import { faBluesky } from '@fortawesome/free-brands-svg-icons'
 
     let { children } = $props()
 
