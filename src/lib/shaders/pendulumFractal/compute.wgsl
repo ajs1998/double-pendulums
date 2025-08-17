@@ -81,9 +81,10 @@ fn compute_energy(s: vec4f) -> vec2f {
     return vec2f(kinetic_energy, potential_energy);
 }
 
-// @workgroup_size(1): 1 thread per pixel
+override workgroupSize = 8;
+
 // global_invocation_id = workgroup_id * workgroup_size + local_invocation_id
-@compute @workgroup_size(1)
+@compute @workgroup_size(workgroupSize, workgroupSize, 1)
 fn main(@builtin(global_invocation_id) pixel_id: vec3u) {
     let grid_size = uniforms.grid_size;
     let pixel_count = grid_size * grid_size;

@@ -2,13 +2,13 @@
 
 - Cleanup the code
 - Sensitivity: sample both pendulums
-- Energy loss: revisit calculation?
-- Constant random seed
 - Save image
+- Workgroups
+- Constant random seed
 - Address performance on PC
 - Themes?
-- Address all TODOs
 - Make this README helpful and relevant to the project
+- Address all TODOs
 - Release v0 and squash the whole commit history
 
 # Project goals

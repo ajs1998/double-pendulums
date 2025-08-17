@@ -1,9 +1,6 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte'
-    import tgpu, {
-        type TgpuBuffer,
-        type TgpuRoot,
-    } from 'typegpu'
+    import tgpu, { type TgpuBuffer, type TgpuRoot } from 'typegpu'
     import * as d from 'typegpu/data'
     import computeShaderCode from '$lib/shaders/pendulumFractal/compute.wgsl?raw'
     import vertexShaderCode from '$lib/shaders/pendulumFractal/vert.wgsl?raw'
@@ -11,9 +8,7 @@
     import { RollingAverage } from '$lib/RollingAverage'
     import { cyclicColorMaps, linearColorMaps } from '$lib/ColorCET'
 
-    const fractalCanvasWidth = 720
-    const fractalCanvasHeight = fractalCanvasWidth
-    const sampledCanvasSize = 250
+    const sampledCanvasSize = 300
 
     // Crosshair overlay state
     let showCrosshair = $state(true)
@@ -46,12 +41,16 @@
     let sampledCanvas: HTMLCanvasElement
     let gradientCanvas: HTMLCanvasElement
 
-    const gridSize = fractalCanvasWidth
+    // 8 * 8 = 64 threads per workgroup
+    // https://webgpufundamentals.org/webgpu/lessons/webgpu-compute-shaders.html
+    const workgroupSize = 8
+    // Canvas size is a multiple of the workgroup size
+    // 8 * 90 = 720 pixels
+    const workgroupCount = 90
+    const gridSize = workgroupSize * workgroupCount
     const pixelCount = gridSize * gridSize
-    const centerXY = [
-        Math.floor(gridSize / 2),
-        Math.floor(gridSize / 2),
-    ]
+    const centerXY = [Math.floor(gridSize / 2), Math.floor(gridSize / 2)]
+    const maxTicksPerSecond = 5000
 
     let colorMaps = $state([...cyclicColorMaps, ...linearColorMaps])
     let selectedColormap = $state(defaultCyclicColorMap)
@@ -218,9 +217,9 @@
         root = await tgpu.init()
         const device = root.device
 
-        const ctx = fractalCanvas.getContext('webgpu') as GPUCanvasContext
+        const context = fractalCanvas.getContext('webgpu') as GPUCanvasContext
         const format = navigator.gpu.getPreferredCanvasFormat()
-        ctx.configure({
+        context.configure({
             device,
             format,
             alphaMode: 'premultiplied',
@@ -394,6 +393,9 @@
                 compute: {
                     module: computeModule,
                     entryPoint: 'main',
+                    constants: {
+                        workgroupSize: workgroupSize,
+                    }
                 },
             })
 
@@ -510,14 +512,14 @@
                 const computePass = encoder.beginComputePass()
                 computePass.setPipeline(computePipeline)
                 computePass.setBindGroup(0, computeBindGroup)
-                computePass.dispatchWorkgroups(gridSize, gridSize)
+                computePass.dispatchWorkgroups(workgroupCount, workgroupCount)
                 computePass.end()
                 device.queue.submit([encoder.finish()])
             }
 
             function runRenderPass() {
                 const encoder = device.createCommandEncoder()
-                const view = ctx.getCurrentTexture().createView()
+                const view = context.getCurrentTexture().createView()
                 const renderPass = encoder.beginRenderPass({
                     colorAttachments: [
                         {
@@ -610,8 +612,8 @@
 
     function getCssValue(variable: string) {
         return getComputedStyle(document.documentElement)
-        .getPropertyValue(variable)
-        .trim()
+            .getPropertyValue(variable)
+            .trim()
     }
 
     function drawSampledPendulum(
@@ -621,10 +623,10 @@
         omega2: number
     ) {
         if (!sampledCanvas) return
-        const ctx = sampledCanvas.getContext('2d')
-        if (!ctx) return
+        const context = sampledCanvas.getContext('2d')
+        if (!context) return
 
-        ctx.clearRect(0, 0, sampledCanvas.width, sampledCanvas.height)
+        context.clearRect(0, 0, sampledCanvas.width, sampledCanvas.height)
         let colorMap = loadColorMap(colormapCsv)
         const cmapLen = colorMap.length
 
@@ -674,52 +676,52 @@
         for (let i = 1; i < trace.length; ++i) {
             const prev = trace[i - 1]
             const curr = trace[i]
-            ctx.save()
-            ctx.globalAlpha = curr.alpha * (i / trace.length)
-            ctx.strokeStyle = traceColor
-            ctx.lineWidth = 2
-            ctx.beginPath()
-            ctx.moveTo(prev.x, prev.y)
-            ctx.lineTo(curr.x, curr.y)
-            ctx.stroke()
-            ctx.restore()
+            context.save()
+            context.globalAlpha = curr.alpha * (i / trace.length)
+            context.strokeStyle = traceColor
+            context.lineWidth = 2
+            context.beginPath()
+            context.moveTo(prev.x, prev.y)
+            context.lineTo(curr.x, curr.y)
+            context.stroke()
+            context.restore()
         }
         // Fade trace alphas
         for (let t of trace) t.alpha *= fadeStep
 
         // Draw first arm
-        ctx.globalAlpha = 1.0
-        ctx.strokeStyle = color1
-        ctx.lineWidth = 3
-        ctx.beginPath()
-        ctx.moveTo(origin.x, origin.y)
-        ctx.lineTo(x1, y1)
-        ctx.stroke()
+        context.globalAlpha = 1.0
+        context.strokeStyle = color1
+        context.lineWidth = 3
+        context.beginPath()
+        context.moveTo(origin.x, origin.y)
+        context.lineTo(x1, y1)
+        context.stroke()
 
         // Draw second arm
-        ctx.strokeStyle = color2
-        ctx.lineWidth = 3
-        ctx.beginPath()
-        ctx.moveTo(x1, y1)
-        ctx.lineTo(x2, y2)
-        ctx.stroke()
+        context.strokeStyle = color2
+        context.lineWidth = 3
+        context.beginPath()
+        context.moveTo(x1, y1)
+        context.lineTo(x2, y2)
+        context.stroke()
 
         // Draw first bob
-        ctx.fillStyle = color1
-        ctx.beginPath()
-        ctx.arc(x1, y1, m1, 0, 2 * Math.PI)
-        ctx.fill()
+        context.fillStyle = color1
+        context.beginPath()
+        context.arc(x1, y1, m1, 0, 2 * Math.PI)
+        context.fill()
 
         // Draw second bob
-        ctx.fillStyle = color2
-        ctx.beginPath()
-        ctx.arc(x2, y2, m2, 0, 2 * Math.PI)
-        ctx.fill()
+        context.fillStyle = color2
+        context.beginPath()
+        context.arc(x2, y2, m2, 0, 2 * Math.PI)
+        context.fill()
     }
 
     function drawColormapPreview() {
-        const ctx = gradientCanvas.getContext('2d')
-        if (!ctx) return
+        const context = gradientCanvas.getContext('2d')
+        if (!context) return
 
         const colorMap = loadColorMap(colormapCsv)
         const w = gradientCanvas.width
@@ -727,8 +729,8 @@
         for (let x = 0; x < w; x++) {
             const t = x / (w - 1)
             const rgb = colorMap[Math.floor(t * (colorMap.length - 1))]
-            ctx.fillStyle = `rgb(${Math.round(rgb[0] * 255)},${Math.round(rgb[1] * 255)},${Math.round(rgb[2] * 255)})`
-            ctx.fillRect(x, 0, 1, h)
+            context.fillStyle = `rgb(${Math.round(rgb[0] * 255)},${Math.round(rgb[1] * 255)},${Math.round(rgb[2] * 255)})`
+            context.fillRect(x, 0, 1, h)
         }
     }
 
@@ -737,7 +739,10 @@
     }
 
     function onSelectVisualizationMode() {
-        if (selectedVisualizationMode.id === 0 || selectedVisualizationMode.id === 1) {
+        if (
+            selectedVisualizationMode.id === 0 ||
+            selectedVisualizationMode.id === 1
+        ) {
             selectedColormap = defaultCyclicColorMap
         } else if (selectedVisualizationMode.id === 2) {
             selectedColormap = defaultLinearColorMap
@@ -753,38 +758,38 @@
 
     // Draw crosshair overlay
     function drawCrosshair() {
-        const ctx = crosshairCanvas.getContext('2d')
-        if (!ctx) return
+        const context = crosshairCanvas.getContext('2d')
+        if (!context) return
 
-        ctx.clearRect(0, 0, crosshairCanvas.width, crosshairCanvas.height)
+        context.clearRect(0, 0, crosshairCanvas.width, crosshairCanvas.height)
         if (!showCrosshair) return
 
         // Convert grid coordinates to canvas pixels
         const [x, y] = sampledPendulumXY
         const px = x * (crosshairCanvas.width / gridSize)
         const py = (gridSize - y) * (crosshairCanvas.height / gridSize)
-        ctx.save()
-        ctx.strokeStyle = baseContentColor
-        ctx.lineWidth = 1
+        context.save()
+        context.strokeStyle = baseContentColor
+        context.lineWidth = 1
 
         // Draw horizontal line
-        ctx.beginPath()
-        ctx.moveTo(0, py)
-        ctx.lineTo(crosshairCanvas.width, py)
-        ctx.stroke()
+        context.beginPath()
+        context.moveTo(0, py)
+        context.lineTo(crosshairCanvas.width, py)
+        context.stroke()
 
         // Draw vertical line
-        ctx.beginPath()
-        ctx.moveTo(px, 0)
-        ctx.lineTo(px, crosshairCanvas.height)
-        ctx.stroke()
+        context.beginPath()
+        context.moveTo(px, 0)
+        context.lineTo(px, crosshairCanvas.height)
+        context.stroke()
 
         // Draw small center dot
-        ctx.beginPath()
-        ctx.arc(px, py, 4, 0, 2 * Math.PI)
-        ctx.fillStyle = 'rgba(255,255,255,0.7)'
-        ctx.fill()
-        ctx.restore()
+        context.beginPath()
+        context.arc(px, py, 4, 0, 2 * Math.PI)
+        context.fillStyle = 'rgba(255,255,255,0.7)'
+        context.fill()
+        context.restore()
     }
 </script>
 
@@ -798,22 +803,25 @@
 <main class="md:m-2 md:overflow-x-scroll">
     <div class="flex flex-col md:flex-row md:gap-4 md:p-2">
         <div class="flex-none" style="position:relative;">
+            <!-- Fractal canvas -->
             <canvas
-                class="skeleton w-full border rounded-lg border-gray-700"
-                width={fractalCanvasWidth}
-                height={fractalCanvasHeight}
+                class="skeleton w-full rounded-lg border border-gray-700"
+                width={gridSize}
+                height={gridSize}
                 bind:this={fractalCanvas}
                 onclick={fractalCanvasClick}
                 style="position:relative;z-index:1;"
             ></canvas>
+            <!-- Crosshair canvas -->
             <canvas
-                width={fractalCanvasWidth}
-                height={fractalCanvasHeight}
+                width={gridSize}
+                height={gridSize}
                 bind:this={crosshairCanvas}
-                class="absolute top-0 left-0 pointer-events-none"
+                class="pointer-events-none absolute top-0 left-0"
                 style="z-index:2;"
             ></canvas>
         </div>
+
         <div class="m-2 flex-1">
             <!-- Sampled pendulum display -->
             <div class="justify-items-center">
@@ -839,7 +847,7 @@
                 <input type="checkbox" bind:checked={showCrosshair} />
                 Show crosshair
             </label>
-            
+
             <fieldset class="fieldset">
                 <!-- Click action buttons -->
                 <legend class="fieldset-legend">Click action</legend>
@@ -878,7 +886,9 @@
                     onchange={() => onSelectVisualizationMode()}
                 >
                     {#each visualizationModes as visualizationMode}
-                        <option value={visualizationMode}>{visualizationMode.name}</option>
+                        <option value={visualizationMode}
+                            >{visualizationMode.name}</option
+                        >
                     {/each}
                 </select>
 
@@ -897,7 +907,9 @@
                     class="h-4 w-full rounded-lg border border-gray-700"
                     bind:this={gradientCanvas}
                 ></canvas>
-                <div class="flex justify-between text-xs label tabular-nums font-mono">
+                <div
+                    class="label flex justify-between font-mono text-xs tabular-nums"
+                >
                     {#if selectedVisualizationMode.id === 0 || selectedVisualizationMode.id === 1}
                         <span>0</span>
                         <span>+&pi;/2</span>
@@ -940,7 +952,7 @@
                 type="range"
                 class="range w-full"
                 min="0"
-                max="5000"
+                max={maxTicksPerSecond}
                 bind:value={targetTicksPerSecond}
             />
             <p class="label w-full">Simulation steps per second</p>
