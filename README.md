@@ -6,7 +6,6 @@
 - Constant random seed
 - Save image
 - Address performance on PC
-- Crosshair
 - Themes?
 - Address all TODOs
 - Make this README helpful and relevant to the project

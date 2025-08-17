@@ -1,6 +1,5 @@
 struct Pixel {
-    energy: vec2f,
-    initial_energy: f32,
+    energy: vec3f,
     distance: f32,
 }
 
@@ -16,6 +15,10 @@ struct Out {
 };
 
 const PI: f32 = 3.141592653589793;
+
+fn floormod(x: f32, y: f32) -> f32 {
+    return x - y * floor(x / y);
+}
 
 @vertex
 fn main(
@@ -35,19 +38,22 @@ fn main(
 
     var color_index: u32;
     if (visualization_mode == 0u) {
-        // Theta1 visualization
+        // Theta1
         color_index = u32(fract(theta1 / (2 * PI)) * 255);
     } else if (visualization_mode == 1u) {
-        // Theta2 visualization
+        // Theta2
         color_index = u32(fract(theta2 / (2 * PI)) * 255);
     } else if (visualization_mode == 2u) {
         // Sensitivity
         color_index = (u32(pixel.distance * 255)) % 256;
     } else if (visualization_mode == 3u) {
         // Energy loss
-        color_index = u32((1 - ((pixel.energy[0] + pixel.energy[1]) / pixel.initial_energy)) * 255) % 256;
+        let energy = pixel.energy[1] + pixel.energy[2];
+        let initial_energy = pixel.energy[0];
+        color_index = u32(floormod((initial_energy - energy) / initial_energy * 256.0, 256.0));
     }
 
     let color = color_map[color_index];
     return Out(vec4f(x, y, 0., 1.), vec4f(color.rgb, 1.));
 }
+

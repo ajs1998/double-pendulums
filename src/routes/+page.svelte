@@ -14,7 +14,11 @@
     const fractalCanvasWidth = 720
     const fractalCanvasHeight = fractalCanvasWidth
     const sampledCanvasSize = 250
-    const defaultCyclicColorMap = cyclicColorMaps[11]
+
+    // Crosshair overlay state
+    let showCrosshair = $state(true)
+    const defaultCyclicColorMap = cyclicColorMaps[6]
+    const defaultDivergingColorMap = cyclicColorMaps[6]
     const defaultLinearColorMap = linearColorMaps[15]
 
     let length1 = $state(1.0)
@@ -38,14 +42,19 @@
     let resetShaders = $state(() => {})
     let root: TgpuRoot
     let fractalCanvas: HTMLCanvasElement
+    let crosshairCanvas: HTMLCanvasElement
     let sampledCanvas: HTMLCanvasElement
     let gradientCanvas: HTMLCanvasElement
 
-    let gridSize = fractalCanvasWidth
+    const gridSize = fractalCanvasWidth
     const pixelCount = gridSize * gridSize
+    const centerXY = [
+        Math.floor(gridSize / 2),
+        Math.floor(gridSize / 2),
+    ]
 
     let colorMaps = $state([...cyclicColorMaps, ...linearColorMaps])
-    let selectedColormap = $state(cyclicColorMaps[11])
+    let selectedColormap = $state(defaultCyclicColorMap)
     let colormapCsv = $derived(selectedColormap.csv)
 
     interface ClickAction {
@@ -110,10 +119,7 @@
 
     let selectedClickAction = $state(clickActions[0])
     let selectedVisualizationMode = $state(visualizationModes[0])
-    let sampledPendulumXY = $state([
-        Math.floor(gridSize / 2),
-        Math.floor(gridSize / 2),
-    ])
+    let sampledPendulumXY = $state(centerXY)
     let sampledPendulumLocation = $state([0, 0]) // Theta coordinates
     let sampledPendulum = $state([0, 0, 0, 0])
     let stateBuffer: TgpuBuffer<d.WgslArray<d.Vec4f>>
@@ -144,9 +150,7 @@
         zoomCenter = [theta1, theta2]
 
         // Reset the sampled pendulum to the new zoom center
-        sampledPendulumXY = [x, y]
-        sampledPendulumLocation = [theta1 / Math.PI, theta2 / Math.PI]
-        samplePendulum(sampledPendulumXY[0], sampledPendulumXY[1])
+        samplePendulum(x, y)
         resetPendulums()
     }
 
@@ -195,15 +199,17 @@
             return
         }
         const { x, y } = getXYCoordinates(e)
+        const [theta1, theta2] = getThetaCoordinates(x, y)
+        sampledPendulumLocation = [theta1 / Math.PI, theta2 / Math.PI]
+        sampledPendulumXY = [x, y]
+        trace = []
         if (selectedClickAction.id === 0) {
-            const [theta1, theta2] = getThetaCoordinates(x, y)
-            sampledPendulumXY = [x, y]
-            sampledPendulumLocation = [theta1 / Math.PI, theta2 / Math.PI]
             samplePendulum(x, y)
-            trace = []
         } else if (selectedClickAction.id === 1) {
+            sampledPendulumXY = centerXY
             zoomIn(x, y)
         } else if (selectedClickAction.id === 2) {
+            sampledPendulumXY = centerXY
             zoomOut(x, y)
         }
     }
@@ -242,7 +248,7 @@
             timestep = timestepTemp
             trace = []
 
-            drawGradient()
+            drawColormapPreview()
 
             const computeModule = device.createShaderModule({
                 code: computeShaderCode,
@@ -273,8 +279,7 @@
 
             const pixelsBufferStruct = d.arrayOf(
                 d.struct({
-                    energy: d.vec2f, // kinetic_energy, potential_energy
-                    initial_energy: d.f32, // total initial energy
+                    energy: d.vec3f, // initial_energy, kinetic_energy, potential_energy
                     distance: d.f32, // distance between the 2 pendulums
                 }),
                 pixelCount
@@ -332,8 +337,7 @@
                 pixelsBuffer.write(
                     initialEnergies.map((e) => {
                         return {
-                            energy: d.vec2f(0, 0),
-                            initial_energy: e,
+                            energy: d.vec3f(e, 0, 0),
                             distance: 0.0,
                         }
                     })
@@ -565,12 +569,16 @@
 
                 // Render
                 runRenderPass()
+                // Draw crosshair after fractal rendering
+                drawCrosshair()
 
                 // Correct FPS calculation: time between animation frames
                 if (elapsed > 0) {
                     rollingAverageFps.push(1000 / elapsed)
                 }
                 measuredFps = rollingAverageFps.getAverage()
+
+                baseContentColor = getCssValue('--color-base-content')
 
                 // Continuously update sampledPendulum from GPU buffer
                 samplePendulum(sampledPendulumXY[0], sampledPendulumXY[1])
@@ -580,6 +588,7 @@
                     sampledPendulum[2],
                     sampledPendulum[3]
                 )
+                drawCrosshair()
                 animationFrameId = requestAnimationFrame(renderLoop)
             }
 
@@ -597,6 +606,13 @@
     let trace: { x: number; y: number; alpha: number }[] = []
     const maxTraceLength = 1000
     const fadeStep = 0.999 // fade factor per frame
+    let baseContentColor: string
+
+    function getCssValue(variable: string) {
+        return getComputedStyle(document.documentElement)
+        .getPropertyValue(variable)
+        .trim()
+    }
 
     function drawSampledPendulum(
         theta1: number,
@@ -621,9 +637,6 @@
             return `rgb(${Math.round(arr[0] * 255)},${Math.round(arr[1] * 255)},${Math.round(arr[2] * 255)})`
         }
 
-        let baseContentColor = getComputedStyle(document.documentElement)
-            .getPropertyValue('--color-base-content')
-            .trim()
         let color1 = baseContentColor
         let color2 = baseContentColor
         let traceColor = color1
@@ -704,9 +717,10 @@
         ctx.fill()
     }
 
-    function drawGradient() {
+    function drawColormapPreview() {
         const ctx = gradientCanvas.getContext('2d')
         if (!ctx) return
+
         const colorMap = loadColorMap(colormapCsv)
         const w = gradientCanvas.width
         const h = gradientCanvas.height
@@ -725,14 +739,52 @@
     function onSelectVisualizationMode() {
         if (selectedVisualizationMode.id === 0 || selectedVisualizationMode.id === 1) {
             selectedColormap = defaultCyclicColorMap
-        } else if (selectedVisualizationMode.id === 2 || selectedVisualizationMode.id === 3) {
+        } else if (selectedVisualizationMode.id === 2) {
             selectedColormap = defaultLinearColorMap
+        } else if (selectedVisualizationMode.id === 3) {
+            selectedColormap = defaultDivergingColorMap
         }
         resetShaders()
     }
 
     function onSelectColormap() {
         resetShaders()
+    }
+
+    // Draw crosshair overlay
+    function drawCrosshair() {
+        const ctx = crosshairCanvas.getContext('2d')
+        if (!ctx) return
+
+        ctx.clearRect(0, 0, crosshairCanvas.width, crosshairCanvas.height)
+        if (!showCrosshair) return
+
+        // Convert grid coordinates to canvas pixels
+        const [x, y] = sampledPendulumXY
+        const px = x * (crosshairCanvas.width / gridSize)
+        const py = (gridSize - y) * (crosshairCanvas.height / gridSize)
+        ctx.save()
+        ctx.strokeStyle = baseContentColor
+        ctx.lineWidth = 1
+
+        // Draw horizontal line
+        ctx.beginPath()
+        ctx.moveTo(0, py)
+        ctx.lineTo(crosshairCanvas.width, py)
+        ctx.stroke()
+
+        // Draw vertical line
+        ctx.beginPath()
+        ctx.moveTo(px, 0)
+        ctx.lineTo(px, crosshairCanvas.height)
+        ctx.stroke()
+
+        // Draw small center dot
+        ctx.beginPath()
+        ctx.arc(px, py, 4, 0, 2 * Math.PI)
+        ctx.fillStyle = 'rgba(255,255,255,0.7)'
+        ctx.fill()
+        ctx.restore()
     }
 </script>
 
@@ -745,15 +797,22 @@
 
 <main class="md:m-2 md:overflow-x-scroll">
     <div class="flex flex-col md:flex-row md:gap-4 md:p-2">
-        <div class="flex-none">
+        <div class="flex-none" style="position:relative;">
             <canvas
                 class="skeleton w-full border rounded-lg border-gray-700"
                 width={fractalCanvasWidth}
                 height={fractalCanvasHeight}
                 bind:this={fractalCanvas}
                 onclick={fractalCanvasClick}
-            >
-            </canvas>
+                style="position:relative;z-index:1;"
+            ></canvas>
+            <canvas
+                width={fractalCanvasWidth}
+                height={fractalCanvasHeight}
+                bind:this={crosshairCanvas}
+                class="absolute top-0 left-0 pointer-events-none"
+                style="z-index:2;"
+            ></canvas>
         </div>
         <div class="m-2 flex-1">
             <!-- Sampled pendulum display -->
@@ -775,6 +834,12 @@
                 </span>
             </div>
 
+            <!-- Crosshair toggle -->
+            <label class="label">
+                <input type="checkbox" bind:checked={showCrosshair} />
+                Show crosshair
+            </label>
+            
             <fieldset class="fieldset">
                 <!-- Click action buttons -->
                 <legend class="fieldset-legend">Click action</legend>
@@ -839,7 +904,7 @@
                         <span>&#x00B1;pi</span>
                         <span>+&pi;/2</span>
                         <span>0</span>
-                    {:else if selectedVisualizationMode.id === 2 || selectedVisualizationMode.id === 3}
+                    {:else if selectedVisualizationMode.id === 2}
                         <span>0</span>
                         <span>0.5</span>
                         <span>1</span>
@@ -898,7 +963,7 @@
                 class="tooltip tooltip-bottom"
                 data-tip="Lower is slower, but more accurate"
             >
-                <p class="label w-full">4th order RK integration time step</p>
+                <p class="label w-full">RK4 integration time step</p>
             </div>
         </div>
     </div>
