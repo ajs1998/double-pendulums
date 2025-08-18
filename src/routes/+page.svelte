@@ -634,47 +634,84 @@
             .trim()
     }
 
-    function drawSampledPendulum(
-        theta1: number,
-        theta2: number,
-    ) {
+    // Helper: draw a pendulum arm
+    function drawArmAndBob(
+        context: CanvasRenderingContext2D,
+        x1: number,
+        y1: number,
+        x2: number,
+        y2: number,
+        radius: number,
+        color: string,
+        width: number = 3
+    ): void {
+        context.strokeStyle = color
+        context.lineWidth = width
+        context.beginPath()
+        context.moveTo(x1, y1)
+        context.lineTo(x2, y2)
+        context.stroke()
+        context.fillStyle = color
+        context.beginPath()
+        context.arc(x2, y2, radius, 0, 2 * Math.PI)
+        context.fill()
+    }
+
+    // Trace type
+    interface TraceSegment {
+        x1: number
+        y1: number
+        x2: number
+        y2: number
+        color: string
+        alpha: number
+    }
+
+    // Helper: draw trace lines
+    function drawTrace(context: CanvasRenderingContext2D, traceArr: TraceSegment[]): void {
+        for (let i = 0; i < traceArr.length; ++i) {
+            const t = traceArr[i]
+            context.save()
+            context.globalAlpha = t.alpha * ((i + 1) / traceArr.length)
+            context.strokeStyle = t.color
+            context.lineWidth = 2
+            context.beginPath()
+            context.moveTo(t.x1, t.y1)
+            context.lineTo(t.x2, t.y2)
+            context.stroke()
+            context.restore()
+        }
+    }
+
+    // Helper: fade trace alphas
+    function fadeTrace(traceArr: TraceSegment[], fadeStep: number): void {
+        for (let t of traceArr) t.alpha *= fadeStep
+    }
+
+    // Helper: color mapping
+    function angleToColorIndex(theta: number, colorMap: number[][]): number {
+        let norm = (((theta / (2 * Math.PI)) % 1) + 1) % 1
+        return Math.floor(norm * (colorMap.length - 1))
+    }
+    function rgb(arr: number[]): string {
+        return `rgb(${Math.round(arr[0] * 255)},${Math.round(arr[1] * 255)},${Math.round(arr[2] * 255)})`
+    }
+
+    function drawSampledPendulum(theta1: number, theta2: number): void {
         if (!sampledCanvas) return
         const context = sampledCanvas.getContext('2d')
         if (!context) return
 
         context.clearRect(0, 0, sampledCanvas.width, sampledCanvas.height)
-        // TODO
-        let colorMap = loadColorMap(colormapCsv)
 
-        // TODO
-        function angleToColorIndex(theta: number) {
-            let norm = (((theta / (2 * Math.PI)) % 1) + 1) % 1
-            return Math.floor(norm * (colorMap.length - 1))
-        }
-
-        // TODO
-        function rgb(arr: number[]) {
-            return `rgb(${Math.round(arr[0] * 255)},${Math.round(arr[1] * 255)},${Math.round(arr[2] * 255)})`
-        }
-
-        let color1 = baseContentColor
-        let color2 = baseContentColor
-        let traceColor = color1
-
-        // Rendered pendulum parameters
+        const colorMap = loadColorMap(colormapCsv)
         const margin = 20
-        const maxLength =
-            Math.min(sampledCanvas.width, sampledCanvas.height) / 2 - margin
-        const l1 = maxLength * 0.5,
-            l2 = maxLength * 0.5
-        const m1 = 8,
-            m2 = 8
-        const origin = {
-            x: sampledCanvas.width / 2,
-            y: sampledCanvas.height / 2,
-        }
+        const maxLength = Math.min(sampledCanvas.width, sampledCanvas.height) / 2 - margin
+        const l1 = maxLength * 0.5, l2 = maxLength * 0.5
+        const m1 = 8, m2 = 8
+        const origin = { x: sampledCanvas.width / 2, y: sampledCanvas.height / 2 }
 
-        // Calculate positions for first pendulum
+        // First pendulum positions
         const x1 = origin.x + l1 * Math.sin(theta1)
         const y1 = origin.y + l1 * Math.cos(theta1)
         const x2 = x1 + l2 * Math.sin(theta2)
@@ -682,26 +719,13 @@
 
         if (selectedVisualizationMode.id === 2) {
             // Sensitivity mode: draw both pendulums and trace line between bobs
-            // Get perturbed pendulum state from stateBuffer (second pendulum)
-            // This assumes sampledPendulumXY is up to date
-            const i = sampledPendulumXY[0] + sampledPendulumXY[1] * gridSize
-            // Read perturbed state from stateBuffer (already available in initialStates, but here use sampledPendulum for first, and need to read second)
-            // For simplicity, use sampledPendulum for first, and reuse theta1/theta2 for second if not available
-            // If you have access to the perturbed state, replace below with actual values
-            // REMOVE: For now, just offset slightly for visualization
-            // Use sampledPendulum[4] and [6] for perturbed pendulum angles
             const theta1b = sampledPendulum[4]
             const theta2b = sampledPendulum[6]
-
-            // Calculate positions for second pendulum
             const x1b = origin.x + l1 * Math.sin(theta1b)
             const y1b = origin.y + l1 * Math.cos(theta1b)
             const x2b = x1b + l2 * Math.sin(theta2b)
             const y2b = y1b + l2 * Math.cos(theta2b)
-
-            // Calculate distance between bobs
             const dist = Math.sqrt((x2 - x2b) ** 2 + (y2 - y2b) ** 2)
-            // Normalize distance for color map (assuming maxLength is max possible)
             const normDist = Math.min(dist / (2 * maxLength), 1)
             const colorIdx = Math.floor(normDist * (colorMap.length - 1))
             const lineColor = rgb(colorMap[colorIdx])
@@ -709,80 +733,25 @@
             // Add line trace between bobs
             trace.push({ x1: x2, y1: y2, x2: x2b, y2: y2b, color: lineColor, alpha: 1.0 })
             if (trace.length > maxTraceLength) trace.shift()
+            drawTrace(context, trace)
+            fadeTrace(trace, fadeStep)
 
-            // Draw all trace lines (faded)
-            for (let i = 0; i < trace.length; ++i) {
-                const t = trace[i]
-                context.save()
-                context.globalAlpha = t.alpha * ((i + 1) / trace.length)
-                context.strokeStyle = t.color
-                context.lineWidth = 2
-                context.beginPath()
-                context.moveTo(t.x1, t.y1)
-                context.lineTo(t.x2, t.y2)
-                context.stroke()
-                context.restore()
-            }
-            // Fade trace alphas
-            for (let t of trace) t.alpha *= fadeStep
-
-            // Draw both pendulums (arms and bobs)
-            // First pendulum
-            context.globalAlpha = 1.0
-            context.strokeStyle = baseContentColor
-            context.lineWidth = 3
-            context.beginPath()
-            context.moveTo(origin.x, origin.y)
-            context.lineTo(x1, y1)
-            context.stroke()
-            context.strokeStyle = baseContentColor
-            context.beginPath()
-            context.moveTo(x1, y1)
-            context.lineTo(x2, y2)
-            context.stroke()
-            context.fillStyle = baseContentColor
-            context.beginPath()
-            context.arc(x1, y1, m1, 0, 2 * Math.PI)
-            context.fill()
-            context.fillStyle = baseContentColor
-            context.beginPath()
-            context.arc(x2, y2, m2, 0, 2 * Math.PI)
-            context.fill()
-
-            // Second pendulum
-            context.globalAlpha = 1.0
-            context.strokeStyle = baseContentColor
-            context.lineWidth = 3
-            context.beginPath()
-            context.moveTo(origin.x, origin.y)
-            context.lineTo(x1b, y1b)
-            context.stroke()
-            context.strokeStyle = baseContentColor
-            context.beginPath()
-            context.moveTo(x1b, y1b)
-            context.lineTo(x2b, y2b)
-            context.stroke()
-            context.fillStyle = baseContentColor
-            context.beginPath()
-            context.arc(x1b, y1b, m1, 0, 2 * Math.PI)
-            context.fill()
-            context.fillStyle = baseContentColor
-            context.beginPath()
-            context.arc(x2b, y2b, m2, 0, 2 * Math.PI)
-            context.fill()
+            // Draw both pendulums
+            drawArmAndBob(context, x1, y1, x2, y2, m2, baseContentColor)
+            drawArmAndBob(context, origin.x, origin.y, x1, y1, m1, baseContentColor)
+            drawArmAndBob(context, x1b, y1b, x2b, y2b, m2, baseContentColor)
+            drawArmAndBob(context, origin.x, origin.y, x1b, y1b, m1, baseContentColor)
         } else {
-            // Angle and energy loss modes: unchanged
-            // Change arm color for Theta1 and Theta2 modes
+            // Angle and energy loss modes
+            let color1 = baseContentColor
+            let color2 = baseContentColor
             if (selectedVisualizationMode.id === 0) {
-                color1 = rgb(colorMap[angleToColorIndex(theta1)])
+                color1 = rgb(colorMap[angleToColorIndex(theta1, colorMap)])
             } else if (selectedVisualizationMode.id === 1) {
-                color2 = rgb(colorMap[angleToColorIndex(theta2)])
+                color2 = rgb(colorMap[angleToColorIndex(theta2, colorMap)])
             }
-
-            // Add current position to trace
             trace.push({ x1: x2, y1: y2, x2: x2, y2: y2, color: baseContentColor, alpha: 1.0 })
             if (trace.length > maxTraceLength) trace.shift()
-
             // Draw trace as bob path
             for (let i = 1; i < trace.length; ++i) {
                 const prev = trace[i - 1]
@@ -797,37 +766,9 @@
                 context.stroke()
                 context.restore()
             }
-            // Fade trace alphas
-            for (let t of trace) t.alpha *= fadeStep
-
-            // Draw first arm
-            context.globalAlpha = 1.0
-            context.strokeStyle = color1
-            context.lineWidth = 3
-            context.beginPath()
-            context.moveTo(origin.x, origin.y)
-            context.lineTo(x1, y1)
-            context.stroke()
-
-            // Draw second arm
-            context.strokeStyle = color2
-            context.lineWidth = 3
-            context.beginPath()
-            context.moveTo(x1, y1)
-            context.lineTo(x2, y2)
-            context.stroke()
-
-            // Draw first bob
-            context.fillStyle = color1
-            context.beginPath()
-            context.arc(x1, y1, m1, 0, 2 * Math.PI)
-            context.fill()
-
-            // Draw second bob
-            context.fillStyle = color2
-            context.beginPath()
-            context.arc(x2, y2, m2, 0, 2 * Math.PI)
-            context.fill()
+            fadeTrace(trace, fadeStep)
+            drawArmAndBob(context, x1, y1, x2, y2, m2, color2)
+            drawArmAndBob(context, origin.x, origin.y, x1, y1, m1, color1)
         }
     }
 
