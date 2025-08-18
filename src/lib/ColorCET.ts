@@ -1,59 +1,91 @@
+import * as d from 'typegpu/data'
+
+export type ColorCETMapType =
+    | 'cyclic'
+    | 'diverging'
+    | 'isoluminant'
+    | 'linear'
+    | 'rainbow'
+export type ColorCETIdentifier = {
+    type: ColorCETMapType
+    id: number
+    variant?: 'CB' | 's' | 'A'
+}
 export type ColorCETMap = {
+    id: ColorCETIdentifier
     displayName: string
-    csv: string
+    colors: d.v3f[]
 }
 
-// Load all colormaps as a map from "CET-C3s" etc to csv string
-const colormapModules: Record<string, string> = Object.fromEntries(
-    Object.entries(
-        import.meta.glob('$lib/colorcet-maps/*.csv', {
-            query: '?raw',
-            import: 'default',
-            eager: true,
-        })
-    ).map(([path, csv]) => [
-        path.split('/').pop()!.replace('.csv', ''),
-        csv as string,
-    ])
+export function getId(idString: string): ColorCETIdentifier {
+    const matches = idString.match(/^(CB)?(C|D|I|L|R)(\d+)(s|A)?$/)
+    if (!matches) throw new Error(`Invalid ColorCET id string: ${idString}`)
+    const type =
+        matches[2] === 'C'
+            ? 'cyclic'
+            : matches[2] === 'D'
+              ? 'diverging'
+              : matches[2] === 'I'
+                ? 'isoluminant'
+                : matches[2] === 'L'
+                  ? 'linear'
+                  : 'rainbow'
+    const id = Number(matches[3])
+    const variant =
+        matches[1] === 'CB'
+            ? 'CB'
+            : matches[4] === 's'
+              ? 's'
+              : matches[4] === 'A'
+                ? 'A'
+                : undefined
+    return {
+        type,
+        id,
+        variant,
+    }
+}
+
+export function getDisplayName(id: ColorCETIdentifier): string {
+    let displayName = `${id.type.charAt(0).toUpperCase() + id.type.slice(1)} ${id.id}`
+    if (id.variant === 'CB') {
+        displayName = `Colorblind ${displayName}`
+    } else if (id.variant === 's') {
+        displayName = `${displayName} (shift 25%)`
+    } else if (id.variant === 'A') {
+        displayName = `${displayName} (high contrast)`
+    }
+    return displayName
+}
+
+const modules = Object.entries(
+    import.meta.glob('$lib/colorcet-maps/*.csv', {
+        query: '?raw',
+        import: 'default',
+        eager: true,
+    })
 )
 
-// Shift a colormap by 50%
-function shiftColormap50(csv: string): string {
-    const lines = csv.split('\n')
-    const half = Math.floor(lines.length / 2)
-    return [...lines.slice(half), ...lines.slice(0, half)].join('\n')
+// Load all colormaps as a map from "CET-C3s" etc to csv string
+export const colorCETMaps: ColorCETMap[] =
+    modules.map(([path, csv]) => {
+        const idString = path.split('-').pop()!.replace('.csv', '')
+        const colors = (csv as string)
+            .split('\n')
+            .filter((line) => line.trim() !== '')
+            .map((line) => {
+                const [r, g, b] = line.split(',').map(Number)
+                return d.vec3f(r / 255, g / 255, b / 255)
+            })
+        const id = getId(idString)
+        const displayName = getDisplayName(id)
+        return { id, displayName, colors }
+    }).sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+export function findColorCETMap(id: ColorCETIdentifier): ColorCETMap | undefined {
+    return colorCETMaps.find(entry =>
+        entry.id.type === id.type &&
+        entry.id.id === id.id &&
+        entry.id.variant === id.variant
+    );
 }
-
-// Cyclic colormaps (CET-C*)
-export const cyclicColorMaps: ColorCETMap[] = Object.entries(colormapModules)
-    .filter(([key]) => /^CET-C\d(s)?$/.test(key))
-    .flatMap(([key, csv]) => {
-        const displayName =
-            'Cyclic ' +
-            key.replace(/^CET-C(\d)(s)?$/, (_, num, s) =>
-                s ? `${num} shift 25%` : num
-            )
-        return [{ displayName, csv }]
-    })
-    .concat([
-        {
-            displayName: 'Cyclic 3 shift 50%',
-            csv: shiftColormap50(colormapModules['CET-C3']),
-        },
-    ])
-    .sort((a, b) => a.displayName.localeCompare(b.displayName))
-
-// Linear colormaps (CET-L*)
-export const linearColorMaps: ColorCETMap[] = Object.entries(colormapModules)
-    .filter(([key]) => /^CET-L\d{2}(s)?$/.test(key))
-    .map(([key, csv]) => ({
-        displayName:
-            'Linear ' +
-            key.replace(/^CET-L(\d{2})(s)?$/, (_, num, s) =>
-                s ? `${num} shift 25%` : num
-            ),
-        csv,
-    }))
-
-// Example usage:
-// cyclicColorMaps.find(m => m.displayName === "Cyclic 3 shift 50%")

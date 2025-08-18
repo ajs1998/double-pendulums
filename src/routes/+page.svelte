@@ -6,15 +6,16 @@
     import vertexShaderCode from '$lib/shaders/pendulumFractal/vert.wgsl?raw'
     import fragmentShaderCode from '$lib/shaders/pendulumFractal/frag.wgsl?raw'
     import { RollingAverage } from '$lib/RollingAverage'
-    import { cyclicColorMaps, linearColorMaps } from '$lib/ColorCET'
+    import { colorCETMaps, findColorCETMap, type ColorCETMap } from '$lib/ColorCET'
 
     const sampledCanvasSize = 300
 
     // Crosshair overlay state
     let showCrosshair = $state(true)
-    const defaultCyclicColorMap = cyclicColorMaps[6]
-    const defaultDivergingColorMap = cyclicColorMaps[6]
-    const defaultLinearColorMap = linearColorMaps[15]
+    
+    const defaultCyclicColorMap = findColorCETMap({ type: 'cyclic', id: 3 })!
+    const defaultDivergingColorMap = defaultCyclicColorMap
+    const defaultLinearColorMap = findColorCETMap({ type: 'linear', id: 15 })!
 
     let length1 = $state(1.0)
     let length2 = $state(1.0)
@@ -52,9 +53,8 @@
     const centerXY = [Math.floor(gridSize / 2), Math.floor(gridSize / 2)]
     const maxTicksPerSecond = 5000
 
-    let colorMaps = $state([...cyclicColorMaps, ...linearColorMaps])
+    let colorMaps = $state(colorCETMaps)
     let selectedColormap = $state(defaultCyclicColorMap)
-    let colormapCsv = $derived(selectedColormap.csv)
 
     interface ClickAction {
         id: number
@@ -172,8 +172,10 @@
         device.queue.submit([commandEncoder.finish()])
         const mainPendulum = await readBufferA.read()
         const perturbedPendulum = await readBufferB.read()
-        sampledPendulum = [mainPendulum[0], mainPendulum[1], mainPendulum[2], mainPendulum[3],
-                           perturbedPendulum[0], perturbedPendulum[1], perturbedPendulum[2], perturbedPendulum[3]]
+        sampledPendulum = [
+            ...mainPendulum,
+            ...perturbedPendulum,
+        ]
         readBufferA.destroy()
         readBufferB.destroy()
     }
@@ -194,17 +196,6 @@
 
     function zoomOut(x: number, y: number) {
         zoom(x, y, 1 / zoomFactor)
-    }
-
-    function loadColorMap(csv: string) {
-        return csv
-            .split('\n')
-            .slice(1)
-            .filter((line) => line.trim() !== '')
-            .map((line) => {
-                const [r, g, b] = line.split(',').map(Number)
-                return d.vec3f(r / 255, g / 255, b / 255)
-            })
     }
 
     function fractalCanvasClick(e: MouseEvent) {
@@ -365,9 +356,11 @@
                 .$usage('uniform')
             cleanupFns.push(() => visualizationModeBuffer.destroy())
 
-            const colorMap = loadColorMap(colormapCsv)
             const colorMapBuffer = root
-                .createBuffer(d.arrayOf(d.vec3f, colorMap.length), colorMap)
+                .createBuffer(
+                    d.arrayOf(d.vec3f, selectedColormap.colors.length),
+                    selectedColormap.colors
+                )
                 .$usage('storage', 'vertex')
             cleanupFns.push(() => colorMapBuffer.destroy())
 
@@ -409,7 +402,7 @@
                     entryPoint: 'main',
                     constants: {
                         workgroupSize: workgroupSize,
-                    }
+                    },
                 },
             })
 
@@ -598,10 +591,7 @@
 
                 // Continuously update sampledPendulum from GPU buffer
                 samplePendulum(sampledPendulumXY[0], sampledPendulumXY[1])
-                drawSampledPendulum(
-                    sampledPendulum[0],
-                    sampledPendulum[2],
-                )
+                drawSampledPendulum(sampledPendulum[0], sampledPendulum[2])
                 drawCrosshair()
                 animationFrameId = requestAnimationFrame(renderLoop)
             }
@@ -620,9 +610,12 @@
     // For sensitivity mode, trace is an array of lines between bobs with color and alpha
     // For other modes, trace is an array of bob positions with alpha
     let trace: {
-        x1: number; y1: number;
-        x2: number; y2: number;
-        color: string; alpha: number
+        x1: number
+        y1: number
+        x2: number
+        y2: number
+        color: string
+        alpha: number
     }[] = []
     const maxTraceLength = 1000
     const fadeStep = 0.999 // fade factor per frame
@@ -668,7 +661,10 @@
     }
 
     // Helper: draw trace lines
-    function drawTrace(context: CanvasRenderingContext2D, traceArr: TraceSegment[]): void {
+    function drawTrace(
+        context: CanvasRenderingContext2D,
+        traceArr: TraceSegment[]
+    ): void {
         for (let i = 0; i < traceArr.length; ++i) {
             const t = traceArr[i]
             context.save()
@@ -689,10 +685,11 @@
     }
 
     // Helper: color mapping
-    function angleToColorIndex(theta: number, colorMap: number[][]): number {
+    function angleToColorIndex(theta: number, colorMap: ColorCETMap): number {
         let norm = (((theta / (2 * Math.PI)) % 1) + 1) % 1
-        return Math.floor(norm * (colorMap.length - 1))
+        return Math.floor(norm * (colorMap.colors.length - 1))
     }
+
     function rgb(arr: number[]): string {
         return `rgb(${Math.round(arr[0] * 255)},${Math.round(arr[1] * 255)},${Math.round(arr[2] * 255)})`
     }
@@ -704,12 +701,17 @@
 
         context.clearRect(0, 0, sampledCanvas.width, sampledCanvas.height)
 
-        const colorMap = loadColorMap(colormapCsv)
         const margin = 20
-        const maxLength = Math.min(sampledCanvas.width, sampledCanvas.height) / 2 - margin
-        const l1 = maxLength * 0.5, l2 = maxLength * 0.5
-        const m1 = 8, m2 = 8
-        const origin = { x: sampledCanvas.width / 2, y: sampledCanvas.height / 2 }
+        const maxLength =
+            Math.min(sampledCanvas.width, sampledCanvas.height) / 2 - margin
+        const l1 = maxLength * 0.5,
+            l2 = maxLength * 0.5
+        const m1 = 8,
+            m2 = 8
+        const origin = {
+            x: sampledCanvas.width / 2,
+            y: sampledCanvas.height / 2,
+        }
 
         // First pendulum positions
         const x1 = origin.x + l1 * Math.sin(theta1)
@@ -727,30 +729,69 @@
             const y2b = y1b + l2 * Math.cos(theta2b)
             const dist = Math.sqrt((x2 - x2b) ** 2 + (y2 - y2b) ** 2)
             const normDist = Math.min(dist / (2 * maxLength), 1)
-            const colorIdx = Math.floor(normDist * (colorMap.length - 1))
-            const lineColor = rgb(colorMap[colorIdx])
+            const colorIndex = Math.floor(
+                normDist * (selectedColormap.colors.length - 1)
+            )
+            const lineColor = rgb(
+                selectedColormap.colors[colorIndex]
+            )
 
             // Add line trace between bobs
-            trace.push({ x1: x2, y1: y2, x2: x2b, y2: y2b, color: lineColor, alpha: 1.0 })
+            trace.push({
+                x1: x2,
+                y1: y2,
+                x2: x2b,
+                y2: y2b,
+                color: lineColor,
+                alpha: 1.0,
+            })
             if (trace.length > maxTraceLength) trace.shift()
             drawTrace(context, trace)
             fadeTrace(trace, fadeStep)
 
             // Draw both pendulums
             drawArmAndBob(context, x1, y1, x2, y2, m2, baseContentColor)
-            drawArmAndBob(context, origin.x, origin.y, x1, y1, m1, baseContentColor)
+            drawArmAndBob(
+                context,
+                origin.x,
+                origin.y,
+                x1,
+                y1,
+                m1,
+                baseContentColor
+            )
             drawArmAndBob(context, x1b, y1b, x2b, y2b, m2, baseContentColor)
-            drawArmAndBob(context, origin.x, origin.y, x1b, y1b, m1, baseContentColor)
+            drawArmAndBob(
+                context,
+                origin.x,
+                origin.y,
+                x1b,
+                y1b,
+                m1,
+                baseContentColor
+            )
         } else {
             // Angle and energy loss modes
             let color1 = baseContentColor
             let color2 = baseContentColor
             if (selectedVisualizationMode.id === 0) {
-                color1 = rgb(colorMap[angleToColorIndex(theta1, colorMap)])
+                color1 = rgb(
+                    selectedColormap.colors[angleToColorIndex(theta1, selectedColormap)]
+                )
             } else if (selectedVisualizationMode.id === 1) {
-                color2 = rgb(colorMap[angleToColorIndex(theta2, colorMap)])
+                color2 = rgb(
+                    selectedColormap.colors[angleToColorIndex(theta2, selectedColormap)]
+                )
             }
-            trace.push({ x1: x2, y1: y2, x2: x2, y2: y2, color: baseContentColor, alpha: 1.0 })
+
+            trace.push({
+                x1: x2,
+                y1: y2,
+                x2: x2,
+                y2: y2,
+                color: baseContentColor,
+                alpha: 1.0,
+            })
             if (trace.length > maxTraceLength) trace.shift()
             // Draw trace as bob path
             for (let i = 1; i < trace.length; ++i) {
@@ -776,13 +817,13 @@
         const context = gradientCanvas.getContext('2d')
         if (!context) return
 
-        // TODO
-        const colorMap = loadColorMap(colormapCsv)
         const w = gradientCanvas.width
         const h = gradientCanvas.height
         for (let x = 0; x < w; x++) {
             const t = x / (w - 1)
-            const rgb = colorMap[Math.floor(t * (colorMap.length - 1))]
+            const rgb = selectedColormap.colors[
+                Math.floor(t * (selectedColormap.colors.length - 1))
+            ]
             context.fillStyle = `rgb(${Math.round(rgb[0] * 255)},${Math.round(rgb[1] * 255)},${Math.round(rgb[2] * 255)})`
             context.fillRect(x, 0, 1, h)
         }
@@ -953,8 +994,8 @@
                     bind:value={selectedColormap}
                     onchange={onSelectColormap}
                 >
-                    {#each colorMaps as cmap}
-                        <option value={cmap}>{cmap.displayName}</option>
+                    {#each colorMaps as colorMap}
+                        <option value={colorMap}>{colorMap.displayName}</option>
                     {/each}
                 </select>
                 <canvas
