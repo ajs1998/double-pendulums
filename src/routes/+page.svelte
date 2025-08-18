@@ -81,7 +81,7 @@
         onclick: () => void
     }
 
-    let resetControls = $state([
+    let resetControls: ResetControl[] = $state([
         {
             name: `Reset pendulums`,
             onclick: () => resetPendulums(),
@@ -143,6 +143,27 @@
         return [theta1, theta2]
     }
 
+    async function samplePendulum(x: number, y: number) {
+        const device = root.device
+        const i = x + y * gridSize
+
+        // Create a staging buffer to read back the state
+        const readBuffer = root.createBuffer(d.vec4f)
+
+        // Copy the state for the selected pixel (theta1, omega1, theta2, omega2)
+        const commandEncoder = device.createCommandEncoder()
+        commandEncoder.copyBufferToBuffer(
+            stateBuffer.buffer,
+            i * d.sizeOf(d.vec4f), // offset in bytes
+            readBuffer.buffer,
+            0,
+            d.sizeOf(d.vec4f)
+        )
+        device.queue.submit([commandEncoder.finish()])
+        sampledPendulum = await readBuffer.read()
+        readBuffer.destroy()
+    }
+
     function zoom(x: number, y: number, factor: number) {
         const [theta1, theta2] = getThetaCoordinates(x, y)
         zoomAmount *= factor
@@ -170,27 +191,6 @@
                 const [r, g, b] = line.split(',').map(Number)
                 return d.vec3f(r / 255, g / 255, b / 255)
             })
-    }
-
-    async function samplePendulum(x: number, y: number) {
-        const device = root.device
-        const i = x + y * gridSize
-
-        // Create a staging buffer to read back the state
-        const readBuffer = root.createBuffer(d.vec4f)
-
-        // Copy the state for the selected pixel (theta1, omega1, theta2, omega2)
-        const commandEncoder = device.createCommandEncoder()
-        commandEncoder.copyBufferToBuffer(
-            stateBuffer.buffer,
-            i * 16, // offset in bytes
-            readBuffer.buffer,
-            0,
-            16
-        )
-        device.queue.submit([commandEncoder.finish()])
-        sampledPendulum = await readBuffer.read()
-        readBuffer.destroy()
     }
 
     function fractalCanvasClick(e: MouseEvent) {
@@ -586,9 +586,7 @@
                 samplePendulum(sampledPendulumXY[0], sampledPendulumXY[1])
                 drawSampledPendulum(
                     sampledPendulum[0],
-                    sampledPendulum[1],
                     sampledPendulum[2],
-                    sampledPendulum[3]
                 )
                 drawCrosshair()
                 animationFrameId = requestAnimationFrame(renderLoop)
@@ -618,23 +616,23 @@
 
     function drawSampledPendulum(
         theta1: number,
-        omega1: number,
         theta2: number,
-        omega2: number
     ) {
         if (!sampledCanvas) return
         const context = sampledCanvas.getContext('2d')
         if (!context) return
 
         context.clearRect(0, 0, sampledCanvas.width, sampledCanvas.height)
+        // TODO
         let colorMap = loadColorMap(colormapCsv)
-        const cmapLen = colorMap.length
 
+        // TODO
         function angleToColorIndex(theta: number) {
             let norm = (((theta / (2 * Math.PI)) % 1) + 1) % 1
-            return Math.floor(norm * (cmapLen - 1))
+            return Math.floor(norm * (colorMap.length - 1))
         }
 
+        // TODO
         function rgb(arr: number[]) {
             return `rgb(${Math.round(arr[0] * 255)},${Math.round(arr[1] * 255)},${Math.round(arr[2] * 255)})`
         }
@@ -644,6 +642,7 @@
         let traceColor = color1
 
         // Change arm color for Theta1 and Theta2 modes
+        // Change trace color for sensitivity mode
         if (selectedVisualizationMode.id === 0) {
             color1 = rgb(colorMap[angleToColorIndex(theta1)])
         } else if (selectedVisualizationMode.id === 1) {
@@ -723,6 +722,7 @@
         const context = gradientCanvas.getContext('2d')
         if (!context) return
 
+        // TODO
         const colorMap = loadColorMap(colormapCsv)
         const w = gradientCanvas.width
         const h = gradientCanvas.height

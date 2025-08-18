@@ -1,12 +1,10 @@
 # TODO
 
-- Cleanup the code
 - Sensitivity: sample both pendulums
 - Save image
-- Workgroups
-- Constant random seed
 - Address performance on PC
-- Themes?
+- Themes
+- Cleanup the code
 - Make this README helpful and relevant to the project
 - Address all TODOs
 - Release v0 and squash the whole commit history

@@ -45,7 +45,7 @@ fn main(
         color_index = u32(fract(theta2 / (2 * PI)) * 255);
     } else if (visualization_mode == 2u) {
         // Sensitivity
-        color_index = (u32(pixel.distance * 255)) % 256;
+        color_index = u32(pixel.distance * 255);
     } else if (visualization_mode == 3u) {
         // Energy loss
         let energy = pixel.energy[1] + pixel.energy[2];
@@ -56,4 +56,3 @@ fn main(
     let color = color_map[color_index];
     return Out(vec4f(x, y, 0., 1.), vec4f(color.rgb, 1.));
 }
-
