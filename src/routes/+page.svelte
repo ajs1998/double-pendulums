@@ -12,10 +12,17 @@
 
     // Crosshair overlay state
     let showCrosshair = $state(true)
-    
+
+    const cyclicColorMaps = colorCETMaps.filter(map => 
+        map.id.type === 'cyclic' && 
+        map.id.variant !== 's'
+    )
+    const linearColorMaps = colorCETMaps.filter(map => 
+        map.id.type === 'linear'
+    )
     const defaultCyclicColorMap = findColorCETMap({ type: 'cyclic', id: 3 })!
     const defaultDivergingColorMap = defaultCyclicColorMap
-    const defaultLinearColorMap = findColorCETMap({ type: 'linear', id: 15 })!
+    const defaultLinearColorMap = findColorCETMap({ type: 'linear', id: 16 })!
 
     let length1 = $state(1.0)
     let length2 = $state(1.0)
@@ -53,7 +60,7 @@
     const centerXY = [Math.floor(gridSize / 2), Math.floor(gridSize / 2)]
     const maxTicksPerSecond = 5000
 
-    let colorMaps = $state(colorCETMaps)
+    let selectableColorMaps = $state(cyclicColorMaps)
     let selectedColormap = $state(defaultCyclicColorMap)
 
     interface ClickAction {
@@ -839,10 +846,13 @@
             selectedVisualizationMode.id === 1
         ) {
             selectedColormap = defaultCyclicColorMap
+            selectableColorMaps = cyclicColorMaps
         } else if (selectedVisualizationMode.id === 2) {
             selectedColormap = defaultLinearColorMap
+            selectableColorMaps = linearColorMaps
         } else if (selectedVisualizationMode.id === 3) {
             selectedColormap = defaultDivergingColorMap
+            selectableColorMaps = cyclicColorMaps
         }
         resetShaders()
     }
@@ -994,7 +1004,7 @@
                     bind:value={selectedColormap}
                     onchange={onSelectColormap}
                 >
-                    {#each colorMaps as colorMap}
+                    {#each selectableColorMaps as colorMap}
                         <option value={colorMap}>{colorMap.displayName}</option>
                     {/each}
                 </select>

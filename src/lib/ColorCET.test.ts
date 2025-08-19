@@ -15,12 +15,12 @@ test('get id', () => {
 })
 
 test('get display name', () => {
-    expect(getDisplayName({ type: 'cyclic', id: 3 })).toEqual('Cyclic 3')
+    expect(getDisplayName({ type: 'cyclic', id: 1 })).toEqual('Cyclic 1')
     expect(getDisplayName({ type: 'cyclic', id: 3, variant: 's' })).toEqual(
         'Cyclic 3 (shift 25%)'
     )
-    expect(getDisplayName({ type: 'cyclic', id: 3, variant: 'CB' })).toEqual(
-        'Colorblind Cyclic 3'
+    expect(getDisplayName({ type: 'cyclic', id: 1, variant: 'CB' })).toEqual(
+        'Colorblind Cyclic 1'
     )
     expect(getDisplayName({ type: 'diverging', id: 1, variant: 'CB' })).toEqual(
         'Colorblind Diverging 1'

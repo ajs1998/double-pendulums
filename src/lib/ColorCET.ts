@@ -80,12 +80,12 @@ export const colorCETMaps: ColorCETMap[] =
         const id = getId(idString)
         const displayName = getDisplayName(id)
         return { id, displayName, colors }
-    }).sort((a, b) => a.displayName.localeCompare(b.displayName));
+    })
 
-export function findColorCETMap(id: ColorCETIdentifier): ColorCETMap | undefined {
+export function findColorCETMap(id: ColorCETIdentifier): ColorCETMap {
     return colorCETMaps.find(entry =>
         entry.id.type === id.type &&
         entry.id.id === id.id &&
         entry.id.variant === id.variant
-    );
+    )!;
 }
