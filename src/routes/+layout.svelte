@@ -17,6 +17,7 @@
 
             console.log('WebGPU supported')
             console.log(device.limits)
+            console.log(device.adapterInfo)
         }
     })
 </script>

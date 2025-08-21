@@ -1,12 +1,12 @@
 # TODO
 
-- Sensitivity: sample both pendulums
-- Save image
 - Address performance on PC
 - Themes
 - Cleanup the code
 - Make this README helpful and relevant to the project
 - Address all TODOs
+- Favicon 400
+- URL on alexjs.dev
 - Release v0 and squash the whole commit history
 
 # Project goals
