@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte'
-    import tgpu, { type TgpuBuffer, type TgpuRoot } from 'typegpu'
+    import tgpu, { type StorageFlag, type TgpuBuffer, type TgpuRoot, type UniformFlag } from 'typegpu'
     import * as d from 'typegpu/data'
     import computeShaderCode from '$lib/shaders/pendulumFractal/compute.wgsl?raw'
     import vertexShaderCode from '$lib/shaders/pendulumFractal/vert.wgsl?raw'
@@ -36,7 +36,7 @@
     // Temporary value for timestep slider until the slider is released
     let integrationTimestepTemp = $state(integrationTimestep)
     let showCrosshair = $state(true)
-    let visualizationModeBuffer: TgpuBuffer<typeof d.u32>
+    let visualizationModeBuffer: TgpuBuffer<typeof d.u32> & UniformFlag
     let resetPendulums: () => void = $state(() => {})
     let resetShaders = $state(() => {})
     let root: TgpuRoot
@@ -61,7 +61,7 @@
     const perturbationAmount = 0.5
 
     let selectableColorMaps = $state(cyclicColorMaps)
-    let selectedColormap = $state(defaultCyclicColorMap)
+    let selectedColorMap = $state(defaultCyclicColorMap)
 
     interface ClickAction {
         id: number
@@ -128,7 +128,7 @@
     let sampledPendulumXY = $state(centerXY)
     let sampledPendulumLocation = $state([0, 0]) // Theta coordinates
     let sampledPendulum = $state([0, 0, 0, 0])
-    let stateBuffer: TgpuBuffer<d.WgslArray<d.Vec4f>>
+    let statesBuffer: TgpuBuffer<d.WgslArray<d.Vec4f>> & StorageFlag
 
     // TODO Not accurate?
     function getClickXYCoordinates(e: MouseEvent) {
@@ -163,7 +163,7 @@
         // Copy the state for the selected pixel (main pendulum)
         const commandEncoder = device.createCommandEncoder()
         commandEncoder.copyBufferToBuffer(
-            stateBuffer.buffer,
+            statesBuffer.buffer,
             i * d.sizeOf(d.vec4f),
             readBufferA.buffer,
             0,
@@ -171,7 +171,7 @@
         )
         // Copy the state for the selected pixel (perturbed pendulum)
         commandEncoder.copyBufferToBuffer(
-            stateBuffer.buffer,
+            statesBuffer.buffer,
             (i + pixelCount) * d.sizeOf(d.vec4f),
             readBufferB.buffer,
             0,
@@ -273,7 +273,7 @@
                 code: computeShaderCode,
             })
 
-            const uniformData = d.struct({
+            const uniformBufferData = d.struct({
                 // RK4 integration time step
                 dt: d.f32,
                 // Gravitational acceleration
@@ -290,7 +290,7 @@
             })
 
             const uniformBuffer = root
-                .createBuffer(uniformData, {
+                .createBuffer(uniformBufferData, {
                     dt: integrationTimestep,
                     gravity: gravity,
                     l1: length1,
@@ -317,11 +317,12 @@
             cleanupFns.push(() => pixelsBuffer.destroy())
 
             // Two states (theta1, omega1, theta2, omega2) per pixel
-            const stateBufferData = d.arrayOf(d.vec4f, pixelCount * 2)
-            stateBuffer = root
-                .createBuffer(stateBufferData)
+            // One is the main pendulum, and the other is slightly perturbed
+            const statesBufferData = d.arrayOf(d.vec4f, pixelCount * 2)
+            statesBuffer = root
+                .createBuffer(statesBufferData)
                 .$usage('storage')
-            cleanupFns.push(() => stateBuffer.destroy())
+            cleanupFns.push(() => statesBuffer.destroy())
 
             const initialStates: d.v4f[] = new Array(pixelCount * 2)
             const initialEnergies = new Array(pixelCount)
@@ -351,7 +352,7 @@
                             theta2 + deltaTheta2,
                             0
                         )
-                        let potential_energy =
+                        const potential_energy =
                             -(mass1 + mass2) *
                                 length1 *
                                 gravity *
@@ -360,7 +361,7 @@
                         initialEnergies[i] = d.f32(potential_energy)
                     }
                 }
-                stateBuffer.write(initialStates)
+                statesBuffer.write(initialStates)
                 pixelsBuffer.write(
                     initialEnergies.map((e) => {
                         return {
@@ -373,52 +374,42 @@
             }
             resetPendulums()
 
-            // Visualization mode uniform buffer
+            // Buffer for selected visualization mode
             visualizationModeBuffer = root
                 .createBuffer(d.u32, selectedVisualizationMode.id)
                 .$usage('uniform')
             cleanupFns.push(() => visualizationModeBuffer.destroy())
 
+            // Buffer for selected color map
+            const colorMapBufferData = d.arrayOf(d.vec3f, selectedColorMap.colors.length)
             const colorMapBuffer = root
                 .createBuffer(
-                    d.arrayOf(d.vec3f, selectedColormap.colors.length),
-                    selectedColormap.colors
+                    colorMapBufferData,
+                    selectedColorMap.colors
                 )
                 .$usage('storage', 'vertex')
             cleanupFns.push(() => colorMapBuffer.destroy())
 
-            const computeBindGroupLayout = device.createBindGroupLayout({
-                entries: [
-                    {
-                        binding: 0,
-                        visibility: GPUShaderStage.COMPUTE,
-                        buffer: { type: 'uniform' },
-                    },
-                    {
-                        binding: 1,
-                        visibility: GPUShaderStage.COMPUTE,
-                        buffer: { type: 'storage' },
-                    },
-                    {
-                        binding: 2,
-                        visibility: GPUShaderStage.COMPUTE,
-                        buffer: { type: 'storage' },
-                    },
-                ],
-            })
+            const gridSizeBuffer = root
+                .createBuffer(d.u32, gridSize)
+                .$usage('uniform')
+            cleanupFns.push(() => gridSizeBuffer.destroy())
 
-            const computeBindGroup = device.createBindGroup({
-                layout: computeBindGroupLayout,
-                entries: [
-                    { binding: 0, resource: { buffer: uniformBuffer.buffer } },
-                    { binding: 1, resource: { buffer: stateBuffer.buffer } },
-                    { binding: 2, resource: { buffer: pixelsBuffer.buffer } },
-                ],
+            const computeBindGroupLayout = tgpu.bindGroupLayout({
+                uniforms: { uniform: uniformBufferData },
+                states: { storage: statesBufferData, access: 'mutable' },
+                pixels: { storage: pixelsBufferData, access: 'mutable' },
+            });
+
+            const computeBindGroup = root.createBindGroup(computeBindGroupLayout, {
+                uniforms: uniformBuffer,
+                states: statesBuffer,
+                pixels: pixelsBuffer,
             })
 
             const computePipeline = device.createComputePipeline({
                 layout: device.createPipelineLayout({
-                    bindGroupLayouts: [computeBindGroupLayout],
+                    bindGroupLayouts: [root.unwrap(computeBindGroupLayout)],
                 }),
                 compute: {
                     module: computeModule,
@@ -436,68 +427,25 @@
                 code: fragmentShaderCode,
             })
 
-            const renderBindGroupLayout = device.createBindGroupLayout({
-                entries: [
-                    {
-                        binding: 0,
-                        visibility: GPUShaderStage.VERTEX,
-                        buffer: {
-                            type: 'uniform',
-                        },
-                    },
-                    {
-                        binding: 1,
-                        visibility: GPUShaderStage.VERTEX,
-                        buffer: {
-                            type: 'read-only-storage',
-                        },
-                    },
-                    {
-                        binding: 2,
-                        visibility: GPUShaderStage.VERTEX,
-                        buffer: {
-                            type: 'read-only-storage',
-                        },
-                    },
-                    {
-                        binding: 3,
-                        visibility: GPUShaderStage.VERTEX,
-                        buffer: {
-                            type: 'read-only-storage',
-                        },
-                    },
-                    {
-                        binding: 4,
-                        visibility: GPUShaderStage.VERTEX,
-                        buffer: {
-                            type: 'uniform',
-                        },
-                    },
-                ],
+            const renderBindGroupLayout = tgpu.bindGroupLayout({
+                gridSize: { uniform: d.u32 },
+                states: { storage: statesBufferData },
+                pixels: { storage: pixelsBufferData },
+                colorMap: { storage: colorMapBufferData },
+                visualizationMode: { uniform: d.u32 },
             })
 
-            const gridSizeBuffer = root
-                .createBuffer(d.u32, gridSize)
-                .$usage('uniform')
-            cleanupFns.push(() => gridSizeBuffer.destroy())
-
-            const renderBindGroup = device.createBindGroup({
-                layout: renderBindGroupLayout,
-                entries: [
-                    { binding: 0, resource: { buffer: gridSizeBuffer.buffer } },
-                    { binding: 1, resource: { buffer: stateBuffer.buffer } },
-                    { binding: 2, resource: { buffer: pixelsBuffer.buffer } },
-                    { binding: 3, resource: { buffer: colorMapBuffer.buffer } },
-                    {
-                        binding: 4,
-                        resource: { buffer: visualizationModeBuffer.buffer },
-                    },
-                ],
+            const renderBindGroup = root.createBindGroup(renderBindGroupLayout, {
+                gridSize: gridSizeBuffer,
+                states: statesBuffer,
+                pixels: pixelsBuffer,
+                colorMap: colorMapBuffer,
+                visualizationMode: visualizationModeBuffer,
             })
 
             const renderPipeline = device.createRenderPipeline({
                 layout: device.createPipelineLayout({
-                    bindGroupLayouts: [renderBindGroupLayout],
+                    bindGroupLayouts: [root.unwrap(renderBindGroupLayout)],
                 }),
                 vertex: {
                     module: vertexModule,
@@ -535,7 +483,7 @@
                 const encoder = device.createCommandEncoder()
                 const computePass = encoder.beginComputePass()
                 computePass.setPipeline(computePipeline)
-                computePass.setBindGroup(0, computeBindGroup)
+                computePass.setBindGroup(0, root.unwrap(computeBindGroup))
                 computePass.dispatchWorkgroups(workgroupCount, workgroupCount)
                 computePass.end()
                 device.queue.submit([encoder.finish()])
@@ -556,7 +504,8 @@
                 })
                 renderPass.setPipeline(renderPipeline)
                 renderPass.setVertexBuffer(0, squareBuffer.buffer)
-                renderPass.setBindGroup(0, renderBindGroup)
+                renderPass.setBindGroup(0, root.unwrap(renderBindGroup))
+                // Draw the pixels as squares defined by the 4 corner vertices
                 renderPass.draw(4, pixelCount)
                 renderPass.end()
                 device.queue.submit([encoder.finish()])
@@ -565,7 +514,7 @@
             let rollingAverageTps = new RollingAverage(5 * 60)
             let rollingAverageFps = new RollingAverage(5 * 60)
 
-            function simulationLoop() {
+            function computeLoop() {
                 const now = performance.now()
                 const elapsedMillis = now - lastTickTime
                 lastTickTime = now
@@ -584,7 +533,8 @@
                 }
                 measuredTps = rollingAverageTps.getAverage()
 
-                simulationTimerId = window.setTimeout(simulationLoop, 0) // Run as fast as possible
+                // Run again as fast as possible
+                simulationTimerId = window.setTimeout(computeLoop, 0)
             }
 
             let lastRenderTime = 0
@@ -593,7 +543,7 @@
                 const elapsed = now - lastRenderTime
                 lastRenderTime = now
 
-                // Render
+                // Draw fractal
                 runRenderPass()
                 // Draw crosshair after fractal rendering
                 drawCrosshair()
@@ -609,16 +559,20 @@
                 // Continuously update sampledPendulum from GPU buffer
                 samplePendulum(sampledPendulumXY[0], sampledPendulumXY[1])
                 drawSampledPendulum(sampledPendulum[0], sampledPendulum[2])
-                drawCrosshair()
+
                 animationFrameId = requestAnimationFrame(renderLoop)
             }
 
-            simulationLoop()
+            // Start the compute and render loops
+            computeLoop()
             animationFrameId = requestAnimationFrame(renderLoop)
         }
+
+        // Compile and run the simulation
         resetShaders()
     })
 
+    // Destroy WebGPU resources before unmounting
     onDestroy(() => {
         root?.destroy()
     })
@@ -747,10 +701,10 @@
             const dist = Math.sqrt((x2 - x2b) ** 2 + (y2 - y2b) ** 2)
             const normDist = Math.min(dist / (2 * maxLength), 1)
             const colorIndex = Math.floor(
-                normDist * (selectedColormap.colors.length - 1)
+                normDist * (selectedColorMap.colors.length - 1)
             )
             const lineColor = rgb(
-                selectedColormap.colors[colorIndex]
+                selectedColorMap.colors[colorIndex]
             )
 
             // Add line trace between bobs
@@ -793,11 +747,11 @@
             let color2 = baseContentColor
             if (selectedVisualizationMode.id === 0) {
                 color1 = rgb(
-                    selectedColormap.colors[angleToColorIndex(theta1, selectedColormap)]
+                    selectedColorMap.colors[angleToColorIndex(theta1, selectedColorMap)]
                 )
             } else if (selectedVisualizationMode.id === 1) {
                 color2 = rgb(
-                    selectedColormap.colors[angleToColorIndex(theta2, selectedColormap)]
+                    selectedColorMap.colors[angleToColorIndex(theta2, selectedColorMap)]
                 )
             }
 
@@ -838,8 +792,8 @@
         const h = gradientCanvas.height
         for (let x = 0; x < w; x++) {
             const t = x / (w - 1)
-            const rgb = selectedColormap.colors[
-                Math.floor(t * (selectedColormap.colors.length - 1))
+            const rgb = selectedColorMap.colors[
+                Math.floor(t * (selectedColorMap.colors.length - 1))
             ]
             context.fillStyle = `rgb(${Math.round(rgb[0] * 255)},${Math.round(rgb[1] * 255)},${Math.round(rgb[2] * 255)})`
             context.fillRect(x, 0, 1, h)
@@ -855,13 +809,13 @@
             selectedVisualizationMode.id === 0 ||
             selectedVisualizationMode.id === 1
         ) {
-            selectedColormap = defaultCyclicColorMap
+            selectedColorMap = defaultCyclicColorMap
             selectableColorMaps = cyclicColorMaps
         } else if (selectedVisualizationMode.id === 2) {
-            selectedColormap = defaultLinearColorMap
+            selectedColorMap = defaultLinearColorMap
             selectableColorMaps = linearColorMaps
         } else if (selectedVisualizationMode.id === 3) {
-            selectedColormap = defaultDivergingColorMap
+            selectedColorMap = defaultDivergingColorMap
             selectableColorMaps = cyclicColorMaps
         }
         resetShaders()
@@ -1011,7 +965,7 @@
                 <legend class="fieldset-legend">Color map</legend>
                 <select
                     class="select w-full"
-                    bind:value={selectedColormap}
+                    bind:value={selectedColorMap}
                     onchange={onSelectColormap}
                 >
                     {#each selectableColorMaps as colorMap}
