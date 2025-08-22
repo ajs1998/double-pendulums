@@ -1,29 +1,46 @@
 <script lang="ts">
     import '../app.css'
     import { onMount } from 'svelte'
-    import tgpu from 'typegpu'
+    import tgpu, { type TgpuRoot } from 'typegpu'
+    import DoublePendulum from './DoublePendulum.svelte'
 
-    let { children } = $props()
-
-    let modal: HTMLDialogElement
+    let adapterInfo: GPUAdapterInfo | undefined | null = $state(undefined)
+    let webGPUModal: HTMLDialogElement
 
     onMount(async () => {
-        if (!navigator.gpu) {
-            modal.showModal()
-            throw new Error('WebGPU is not supported on this browser.')
+        const webGPURoot = await tgpu.init().catch(() => undefined)
+        if (!webGPURoot) {
+            webGPUModal.showModal()
+            adapterInfo = null
         } else {
-            const root = await tgpu.init()
-            let device: GPUDevice = root.device
+            let device: GPUDevice = webGPURoot.device
+            adapterInfo = device.adapterInfo
 
             console.log('WebGPU supported')
-            console.log(device.limits)
             console.log(device.adapterInfo)
+            console.log(device.limits)
         }
     })
 </script>
 
 <div>
-    {@render children()}
+    <DoublePendulum />
+
+    <div class="flex justify-start p-2 font-mono text-xs">
+        {#if adapterInfo}
+            <div class="text-success">
+                {adapterInfo.vendor} {adapterInfo.architecture}
+            </div>
+        {:else if adapterInfo === null}
+            <div class="text-error">
+                WebGPU not supported
+            </div>
+        {:else}
+            <div class="text-warning">
+                WebGPU is not available
+            </div>
+        {/if}
+    </div>
 
     <footer
         class="footer footer-horizontal footer-center bg-base-300 content-end p-8"
@@ -105,7 +122,7 @@
     </footer>
 
     <!-- WebGPU alert -->
-    <dialog bind:this={modal} class="modal modal-bottom sm:modal-middle">
+    <dialog bind:this={webGPUModal} class="modal modal-bottom sm:modal-middle">
         <div class="modal-box">
             <article class="prose lg:prose-sm">
                 <h2 class="font-bold">This browser does not support WebGPU</h2>

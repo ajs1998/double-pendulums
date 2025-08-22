@@ -9,9 +9,11 @@ struct Uniforms {
 };
 
 struct Pixel {
-    energy: vec3f, // initial_energy, kinetic_energy, potential_energy
-    distance: f32, // distance to the initially perturbed pendulum
-}
+    // (initial_energy, kinetic_energy, potential_energy)
+    energy: vec3f,
+    // Distance to the initially perturbed pendulum
+    distance: f32,
+};
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read_write> states: array<vec4f>;
@@ -52,20 +54,20 @@ fn double_pendulum_derivatives(s: vec4f) -> vec4f {
     return vec4<f32>(omega1, domega1_dt, omega2, domega2_dt);
 }
 
-fn rk4_step(s: vec4f) -> vec4f {
-    let k1 = double_pendulum_derivatives(s);
-    let k2 = double_pendulum_derivatives(s + k1 * uniforms.dt / 2.);
-    let k3 = double_pendulum_derivatives(s + k2 * uniforms.dt / 2.);
-    let k4 = double_pendulum_derivatives(s + uniforms.dt * k3);
+fn rk4_step(state: vec4f) -> vec4f {
+    let k1 = double_pendulum_derivatives(state);
+    let k2 = double_pendulum_derivatives(state + k1 * uniforms.dt / 2.);
+    let k3 = double_pendulum_derivatives(state + k2 * uniforms.dt / 2.);
+    let k4 = double_pendulum_derivatives(state + uniforms.dt * k3);
 
-    return s + (uniforms.dt / 6) * (k1 + 2 * k2 + 2 * k3 + k4);
+    return state + (uniforms.dt / 6) * (k1 + 2 * k2 + 2 * k3 + k4);
 }
 
-fn compute_energy(s: vec4f) -> vec2f {
-    let theta1 = s[0];
-    let omega1 = s[1];
-    let theta2 = s[2];
-    let omega2 = s[3];
+fn compute_energy(state: vec4f) -> vec2f {
+    let theta1 = state[0];
+    let omega1 = state[1];
+    let theta2 = state[2];
+    let omega2 = state[3];
 
     let m1 = uniforms.m1;
     let m2 = uniforms.m2;

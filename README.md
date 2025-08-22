@@ -6,6 +6,7 @@
 - Make this README helpful and relevant to the project
 - Address all TODOs
 - Favicon 400
+- Crosshair resizing
 - URL on alexjs.dev
 - Release v0 and squash the whole commit history
 

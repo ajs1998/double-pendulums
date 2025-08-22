@@ -8,11 +8,6 @@
     import { RollingAverage } from '$lib/RollingAverage'
     import { colorCETMaps, findColorCETMap, type ColorCETMap } from '$lib/ColorCET'
 
-    const sampledCanvasSize = 300
-
-    // Crosshair overlay state
-    let showCrosshair = $state(true)
-
     const cyclicColorMaps = colorCETMaps.filter(map => 
         map.id.type === 'cyclic' && 
         map.id.variant !== 's'
@@ -36,11 +31,12 @@
     let lastTickTime = performance.now()
     let zoomAmount = $state(1.0)
     let zoomFactor = $state(2.0)
-    let zoomCenter = $state([0, 0])
-    let timestep = 0.005
-    let timestepTemp = $state(timestep)
+    let zoomCenter = $state({theta1: 0, theta2: 0})
+    let integrationTimestep = 0.005
+    // Temporary value for timestep slider until the slider is released
+    let integrationTimestepTemp = $state(integrationTimestep)
+    let showCrosshair = $state(true)
     let visualizationModeBuffer: TgpuBuffer<typeof d.u32>
-    let resetZoom: () => void = $state(() => {})
     let resetPendulums: () => void = $state(() => {})
     let resetShaders = $state(() => {})
     let root: TgpuRoot
@@ -59,6 +55,10 @@
     const pixelCount = gridSize * gridSize
     const centerXY = [Math.floor(gridSize / 2), Math.floor(gridSize / 2)]
     const maxTicksPerSecond = 5000
+    const sampledCanvasSize = 300
+    // Secondary pendulum perturbation amount in pixel units
+    // Lower is more stable, but slower to converge
+    const perturbationAmount = 0.5
 
     let selectableColorMaps = $state(cyclicColorMaps)
     let selectedColormap = $state(defaultCyclicColorMap)
@@ -130,7 +130,8 @@
     let sampledPendulum = $state([0, 0, 0, 0])
     let stateBuffer: TgpuBuffer<d.WgslArray<d.Vec4f>>
 
-    function getXYCoordinates(e: MouseEvent) {
+    // TODO Not accurate?
+    function getClickXYCoordinates(e: MouseEvent) {
         const rect = fractalCanvas.getBoundingClientRect()
         const x = Math.floor((e.clientX - rect.left) / (rect.width / gridSize))
         const y =
@@ -140,14 +141,14 @@
         return { x, y }
     }
 
-    function getThetaCoordinates(x: number, y: number) {
+    function toThetaCoordinates(x: number, y: number) {
         const theta1 =
             (Math.PI / zoomAmount) * ((x / (gridSize - 1)) * 2 - 1) +
-            zoomCenter[0]
+            zoomCenter.theta1
         const theta2 =
             (Math.PI / zoomAmount) * ((y / (gridSize - 1)) * 2 - 1) +
-            zoomCenter[1]
-        return [theta1, theta2]
+            zoomCenter.theta2
+        return { theta1, theta2 }
     }
 
     // Sample both pendulums for sensitivity mode
@@ -163,12 +164,12 @@
         const commandEncoder = device.createCommandEncoder()
         commandEncoder.copyBufferToBuffer(
             stateBuffer.buffer,
-            i * d.sizeOf(d.vec4f), // offset in bytes
+            i * d.sizeOf(d.vec4f),
             readBufferA.buffer,
             0,
             d.sizeOf(d.vec4f)
         )
-        // Copy the perturbed state for the selected pixel (second pendulum)
+        // Copy the state for the selected pixel (perturbed pendulum)
         commandEncoder.copyBufferToBuffer(
             stateBuffer.buffer,
             (i + pixelCount) * d.sizeOf(d.vec4f),
@@ -188,9 +189,9 @@
     }
 
     function zoom(x: number, y: number, factor: number) {
-        const [theta1, theta2] = getThetaCoordinates(x, y)
+        const { theta1, theta2 } = toThetaCoordinates(x, y)
         zoomAmount *= factor
-        zoomCenter = [theta1, theta2]
+        zoomCenter = { theta1, theta2 }
 
         // Reset the sampled pendulum to the new zoom center
         samplePendulum(x, y)
@@ -205,14 +206,20 @@
         zoom(x, y, 1 / zoomFactor)
     }
 
+    function resetZoom() {
+        zoomCenter = { theta1: 0, theta2: 0 }
+        zoomAmount = 1.0
+        resetPendulums()
+    }
+
     function fractalCanvasClick(e: MouseEvent) {
         if (e.target !== fractalCanvas) {
             return
         }
-        const { x, y } = getXYCoordinates(e)
-        const [theta1, theta2] = getThetaCoordinates(x, y)
-        sampledPendulumLocation = [theta1 / Math.PI, theta2 / Math.PI]
+        const { x, y } = getClickXYCoordinates(e)
+        const { theta1, theta2 } = toThetaCoordinates(x, y)
         sampledPendulumXY = [x, y]
+        sampledPendulumLocation = [theta1 / Math.PI, theta2 / Math.PI]
         trace = []
         if (selectedClickAction.id === 0) {
             samplePendulum(x, y)
@@ -226,9 +233,9 @@
     }
 
     onMount(async () => {
+        // Setup WebGPU and canvas
         root = await tgpu.init()
         const device = root.device
-
         const context = fractalCanvas.getContext('webgpu') as GPUCanvasContext
         const format = navigator.gpu.getPreferredCanvasFormat()
         context.configure({
@@ -256,52 +263,63 @@
             // Cleanup previous GPU resources
             cleanupFns.forEach((fn) => fn())
             cleanupFns = []
-            timestep = timestepTemp
+            integrationTimestep = integrationTimestepTemp
             trace = []
 
             drawColormapPreview()
 
+            // Setup compute shader
             const computeModule = device.createShaderModule({
                 code: computeShaderCode,
             })
 
             const uniformData = d.struct({
-                dt: d.f32, // time step
-                gravity: d.f32, // gravitational acceleration
-                l1: d.f32, // length of first pendulum
-                l2: d.f32, // length of second pendulum
-                m1: d.f32, // mass of first pendulum
-                m2: d.f32, // mass of second pendulum
-                gridSize: d.u32, // grid size
+                // RK4 integration time step
+                dt: d.f32,
+                // Gravitational acceleration
+                gravity: d.f32,
+                // Length of first pendulum arm
+                l1: d.f32,
+                // Length of second pendulum arm
+                l2: d.f32,
+                // Mass of first pendulum bob
+                m1: d.f32,
+                // Mass of second pendulum bob
+                m2: d.f32,
+                gridSize: d.u32, // Grid size
             })
 
             const uniformBuffer = root
                 .createBuffer(uniformData, {
-                    dt: timestep, // time step
-                    gravity: gravity, // gravitational acceleration
-                    l1: length1, // length of first pendulum
-                    l2: length2, // length of second pendulum
-                    m1: mass1, // mass of first pendulum
-                    m2: mass2, // mass of second pendulum
+                    dt: integrationTimestep,
+                    gravity: gravity,
+                    l1: length1,
+                    l2: length2,
+                    m1: mass1,
+                    m2: mass2,
                     gridSize,
                 })
                 .$usage('uniform')
             cleanupFns.push(() => uniformBuffer.destroy())
 
-            const pixelsBufferStruct = d.arrayOf(
+            const pixelsBufferData = d.arrayOf(
                 d.struct({
-                    energy: d.vec3f, // initial_energy, kinetic_energy, potential_energy
-                    distance: d.f32, // distance between the 2 pendulums
+                    // (initial_energy, kinetic_energy, potential_energy)
+                    energy: d.vec3f,
+                    // Distance between the 2 pendulums 
+                    distance: d.f32,
                 }),
                 pixelCount
             )
             const pixelsBuffer = root
-                .createBuffer(pixelsBufferStruct)
+                .createBuffer(pixelsBufferData)
                 .$usage('storage', 'vertex')
             cleanupFns.push(() => pixelsBuffer.destroy())
 
+            // Two states (theta1, omega1, theta2, omega2) per pixel
+            const stateBufferData = d.arrayOf(d.vec4f, pixelCount * 2)
             stateBuffer = root
-                .createBuffer(d.arrayOf(d.vec4f, pixelCount * 2))
+                .createBuffer(stateBufferData)
                 .$usage('storage')
             cleanupFns.push(() => stateBuffer.destroy())
 
@@ -315,17 +333,15 @@
                         const theta1 =
                             (Math.PI / zoomAmount) *
                                 ((x / (gridSize - 1)) * 2 - 1) +
-                            zoomCenter[0]
+                            zoomCenter.theta1
                         const theta2 =
                             (Math.PI / zoomAmount) *
                                 ((y / (gridSize - 1)) * 2 - 1) +
-                            zoomCenter[1]
+                            zoomCenter.theta2
                         initialStates[i] = d.vec4f(theta1, 0, theta2, 0)
 
                         // Perturb the second pendulum slightly in phase space
-                        // Perturbation amount in pixel units
-                        const perturbation = 0.5
-                        const r = Math.PI * (2 / (gridSize - 1)) * perturbation
+                        const r = perturbationAmount * (Math.PI / zoomAmount) / (gridSize - 1)
                         const angle = Math.random() * 2 * Math.PI
                         const deltaTheta1 = r * Math.cos(angle)
                         const deltaTheta2 = r * Math.sin(angle)
@@ -514,12 +530,6 @@
                 .createBuffer(d.arrayOf(d.u32, 4 * 2), [0, 0, 1, 0, 0, 1, 1, 1])
                 .$usage('vertex')
             cleanupFns.push(() => squareBuffer.destroy())
-
-            resetZoom = () => {
-                zoomCenter = [0, 0]
-                zoomAmount = 1.0
-                resetPendulums()
-            }
 
             function runComputePass() {
                 const encoder = device.createCommandEncoder()
@@ -1065,7 +1075,7 @@
             <!-- Time step slider -->
             <legend class="fieldset-legend">
                 Time step
-                <span class="font-mono">{timestepTemp.toFixed(4)}</span>
+                <span class="font-mono">{integrationTimestepTemp.toFixed(4)}</span>
             </legend>
             <input
                 type="range"
@@ -1074,7 +1084,7 @@
                 max="0.01"
                 step="0.0001"
                 onmouseup={resetShaders}
-                bind:value={timestepTemp}
+                bind:value={integrationTimestepTemp}
             />
             <div
                 class="tooltip tooltip-bottom"
