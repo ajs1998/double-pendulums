@@ -8,17 +8,6 @@
     import { RollingAverage } from '$lib/RollingAverage'
     import { colorCETMaps, findColorCETMap, type ColorCETMap } from '$lib/ColorCET'
 
-    const cyclicColorMaps = colorCETMaps.filter(map => 
-        map.id.type === 'cyclic' && 
-        map.id.variant !== 's'
-    )
-    const linearColorMaps = colorCETMaps.filter(map => 
-        map.id.type === 'linear'
-    )
-    const defaultCyclicColorMap = findColorCETMap({ type: 'cyclic', id: 3 })!
-    const defaultDivergingColorMap = defaultCyclicColorMap
-    const defaultLinearColorMap = findColorCETMap({ type: 'linear', id: 16 })!
-
     let length1 = $state(1.0)
     let length2 = $state(1.0)
     let mass1 = $state(1.0)
@@ -59,6 +48,18 @@
     // Secondary pendulum perturbation amount in pixel units
     // Lower is more stable, but slower to converge
     const perturbationAmount = 0.5
+    const maxTraceLength = 1000
+    const traceWidth = 2
+    const cyclicColorMaps = colorCETMaps.filter(map => 
+        map.id.type === 'cyclic' && 
+        map.id.variant !== 's'
+    )
+    const linearColorMaps = colorCETMaps.filter(map => 
+        map.id.type === 'linear'
+    )
+    const defaultCyclicColorMap = findColorCETMap({ type: 'cyclic', id: 3 })!
+    const defaultDivergingColorMap = defaultCyclicColorMap
+    const defaultLinearColorMap = findColorCETMap({ type: 'linear', id: 16 })!
 
     let selectableColorMaps = $state(cyclicColorMaps)
     let selectedColorMap = $state(defaultCyclicColorMap)
@@ -580,25 +581,25 @@
     // Trace state for the sampled pendulum visualization
     // For sensitivity mode, trace is an array of lines between bobs with color and alpha
     // For other modes, trace is an array of bob positions with alpha
-    let trace: {
+    interface TraceSegment {
         x1: number
         y1: number
         x2: number
         y2: number
         color: string
         alpha: number
-    }[] = []
-    const maxTraceLength = 1000
-    const fadeStep = 0.999 // fade factor per frame
+    }
+
+    let trace: TraceSegment[] = []
     let baseContentColor: string
 
+    // TODO Is this inefficient?
     function getCssValue(variable: string) {
         return getComputedStyle(document.documentElement)
             .getPropertyValue(variable)
             .trim()
     }
 
-    // Helper: draw a pendulum arm
     function drawArmAndBob(
         context: CanvasRenderingContext2D,
         x1: number,
@@ -608,7 +609,7 @@
         radius: number,
         color: string,
         width: number = 3
-    ): void {
+    ) {
         context.strokeStyle = color
         context.lineWidth = width
         context.beginPath()
@@ -621,52 +622,41 @@
         context.fill()
     }
 
-    // Trace type
-    interface TraceSegment {
-        x1: number
-        y1: number
-        x2: number
-        y2: number
-        color: string
-        alpha: number
-    }
-
-    // Helper: draw trace lines
     function drawTrace(
         context: CanvasRenderingContext2D,
-        traceArr: TraceSegment[]
-    ): void {
-        for (let i = 0; i < traceArr.length; ++i) {
-            const t = traceArr[i]
+        segments: TraceSegment[]
+    ) {
+        for (let i = 0; i < segments.length; ++i) {
+            const segment = segments[i]
             context.save()
-            context.globalAlpha = t.alpha * ((i + 1) / traceArr.length)
-            context.strokeStyle = t.color
-            context.lineWidth = 2
+            // Fade alpha based on segment position
+            context.globalAlpha = segment.alpha * ((i + 1) / segments.length)
+            context.strokeStyle = segment.color
+            context.lineWidth = traceWidth
             context.beginPath()
-            context.moveTo(t.x1, t.y1)
-            context.lineTo(t.x2, t.y2)
+            context.moveTo(segment.x1, segment.y1)
+            context.lineTo(segment.x2, segment.y2)
             context.stroke()
             context.restore()
         }
     }
 
-    // Helper: fade trace alphas
-    function fadeTrace(traceArr: TraceSegment[], fadeStep: number): void {
-        for (let t of traceArr) t.alpha *= fadeStep
-    }
-
-    // Helper: color mapping
-    function angleToColorIndex(theta: number, colorMap: ColorCETMap): number {
-        let norm = (((theta / (2 * Math.PI)) % 1) + 1) % 1
-        return Math.floor(norm * (colorMap.colors.length - 1))
+    function angleToColor(theta: number, colorMap: ColorCETMap): d.v3f {
+        const normalizedTheta = ((theta / (2 * Math.PI)) + 1) % 1
+        const index = Math.floor(normalizedTheta * (colorMap.colors.length - 1))
+        return colorMap.colors[index]
     }
 
     function rgb(arr: number[]): string {
-        return `rgb(${Math.round(arr[0] * 255)},${Math.round(arr[1] * 255)},${Math.round(arr[2] * 255)})`
+        return `rgb(
+            ${Math.round(arr[0] * 255)},
+            ${Math.round(arr[1] * 255)},
+            ${Math.round(arr[2] * 255)}
+        )`
     }
 
+    // TODO This is insanely long
     function drawSampledPendulum(theta1: number, theta2: number): void {
-        if (!sampledCanvas) return
         const context = sampledCanvas.getContext('2d')
         if (!context) return
 
@@ -675,8 +665,8 @@
         const margin = 20
         const maxLength =
             Math.min(sampledCanvas.width, sampledCanvas.height) / 2 - margin
-        const l1 = maxLength * 0.5,
-            l2 = maxLength * 0.5
+        const l1 = maxLength / 2,
+            l2 = maxLength / 2
         const m1 = 8,
             m2 = 8
         const origin = {
@@ -718,7 +708,6 @@
             })
             if (trace.length > maxTraceLength) trace.shift()
             drawTrace(context, trace)
-            fadeTrace(trace, fadeStep)
 
             // Draw both pendulums
             drawArmAndBob(context, x1, y1, x2, y2, m2, baseContentColor)
@@ -746,13 +735,9 @@
             let color1 = baseContentColor
             let color2 = baseContentColor
             if (selectedVisualizationMode.id === 0) {
-                color1 = rgb(
-                    selectedColorMap.colors[angleToColorIndex(theta1, selectedColorMap)]
-                )
+                color1 = rgb(angleToColor(theta1, selectedColorMap))
             } else if (selectedVisualizationMode.id === 1) {
-                color2 = rgb(
-                    selectedColorMap.colors[angleToColorIndex(theta2, selectedColorMap)]
-                )
+                color2 = rgb(angleToColor(theta2, selectedColorMap))
             }
 
             trace.push({
@@ -778,7 +763,6 @@
                 context.stroke()
                 context.restore()
             }
-            fadeTrace(trace, fadeStep)
             drawArmAndBob(context, x1, y1, x2, y2, m2, color2)
             drawArmAndBob(context, origin.x, origin.y, x1, y1, m1, color1)
         }
