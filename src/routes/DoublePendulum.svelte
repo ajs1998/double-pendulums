@@ -641,18 +641,14 @@
         }
     }
 
-    function angleToColor(theta: number, colorMap: ColorCETMap): d.v3f {
-        const normalizedTheta = ((theta / (2 * Math.PI)) + 1) % 1
-        const index = Math.floor(normalizedTheta * (colorMap.colors.length - 1))
-        return colorMap.colors[index]
+    function arrayToRGB(values: number[]): string {
+        return `rgb(${Math.round(values[0] * 255)},${Math.round(values[1] * 255)},${Math.round(values[2] * 255)})`
     }
 
-    function rgb(arr: number[]): string {
-        return `rgb(
-            ${Math.round(arr[0] * 255)},
-            ${Math.round(arr[1] * 255)},
-            ${Math.round(arr[2] * 255)}
-        )`
+    function angleToColor(theta: number, colorMap: ColorCETMap): string {
+        const normalizedTheta = ((theta / (2 * Math.PI)) % 1 + 1) % 1
+        const index = Math.floor(normalizedTheta * (colorMap.colors.length - 1))
+        return arrayToRGB(colorMap.colors[index])
     }
 
     // TODO This is insanely long
@@ -693,7 +689,7 @@
             const colorIndex = Math.floor(
                 normDist * (selectedColorMap.colors.length - 1)
             )
-            const lineColor = rgb(
+            const lineColor = arrayToRGB(
                 selectedColorMap.colors[colorIndex]
             )
 
@@ -735,9 +731,9 @@
             let color1 = baseContentColor
             let color2 = baseContentColor
             if (selectedVisualizationMode.id === 0) {
-                color1 = rgb(angleToColor(theta1, selectedColorMap))
+                color1 = angleToColor(theta1, selectedColorMap)
             } else if (selectedVisualizationMode.id === 1) {
-                color2 = rgb(angleToColor(theta2, selectedColorMap))
+                color2 = angleToColor(theta2, selectedColorMap)
             }
 
             trace.push({
@@ -775,11 +771,9 @@
         const w = gradientCanvas.width
         const h = gradientCanvas.height
         for (let x = 0; x < w; x++) {
-            const t = x / (w - 1)
-            const rgb = selectedColorMap.colors[
-                Math.floor(t * (selectedColorMap.colors.length - 1))
-            ]
-            context.fillStyle = `rgb(${Math.round(rgb[0] * 255)},${Math.round(rgb[1] * 255)},${Math.round(rgb[2] * 255)})`
+            const colorIndex = Math.floor(x / (w - 1) * (selectedColorMap.colors.length - 1))
+            const color = selectedColorMap.colors[colorIndex]
+            context.fillStyle = arrayToRGB(color)
             context.fillRect(x, 0, 1, h)
         }
     }
@@ -793,23 +787,27 @@
             selectedVisualizationMode.id === 0 ||
             selectedVisualizationMode.id === 1
         ) {
+            // Theta 1 or Theta 2
             selectedColorMap = defaultCyclicColorMap
             selectableColorMaps = cyclicColorMaps
         } else if (selectedVisualizationMode.id === 2) {
+            // Sensitivity
             selectedColorMap = defaultLinearColorMap
             selectableColorMaps = linearColorMaps
         } else if (selectedVisualizationMode.id === 3) {
+            // Energy loss
             selectedColorMap = defaultDivergingColorMap
             selectableColorMaps = cyclicColorMaps
         }
+
         resetShaders()
     }
 
     function onSelectColormap() {
+        // TODO Can the colormap be changed without resetting the simulation?
         resetShaders()
     }
 
-    // Draw crosshair overlay
     function drawCrosshair() {
         const context = crosshairCanvas.getContext('2d')
         if (!context) return
@@ -823,7 +821,7 @@
         const py = (gridSize - y) * (crosshairCanvas.height / gridSize)
         context.save()
         context.strokeStyle = baseContentColor
-        context.lineWidth = 1
+        context.lineWidth = 2
 
         // Draw horizontal line
         context.beginPath()
@@ -840,25 +838,18 @@
         // Draw small center dot
         context.beginPath()
         context.arc(px, py, 4, 0, 2 * Math.PI)
-        context.fillStyle = 'rgba(255,255,255,0.7)'
+        context.fillStyle = baseContentColor
         context.fill()
         context.restore()
     }
 </script>
-
-{#snippet stat(title: string, stat: string)}
-    <div class="stat">
-        <div class="stat-title">{title}</div>
-        <div class="stat-value font-mono">{stat}</div>
-    </div>
-{/snippet}
 
 <main class="md:m-2 md:overflow-x-scroll">
     <div class="flex flex-col md:flex-row md:gap-4 md:p-2">
         <div class="flex-none" style="position:relative;">
             <!-- Fractal canvas -->
             <canvas
-                class="skeleton w-full rounded-lg border border-gray-700"
+                class="skeleton w-full rounded-lg border border-gray-700 z-0"
                 width={gridSize}
                 height={gridSize}
                 bind:this={fractalCanvas}
@@ -870,8 +861,7 @@
                 width={gridSize}
                 height={gridSize}
                 bind:this={crosshairCanvas}
-                class="pointer-events-none absolute top-0 left-0"
-                style="z-index:2;"
+                class="pointer-events-none absolute z-10 top-0 left-0"
             ></canvas>
         </div>
 
@@ -988,8 +978,20 @@
         <div class="m-2 flex-1 md:m-0">
             <!-- Performance stats -->
             <div class="stats flex justify-items-center">
-                {@render stat('Ticks / sec', Math.abs(measuredTps).toFixed(0))}
-                {@render stat('Frames / sec', measuredFps.toFixed(0))}
+                <div class="stat">
+                    <div class="stat-title">Ticks / sec</div>
+                    <div class="stat-value font-mono">{Math.abs(measuredTps).toFixed(0)}</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">Frames / sec</div>
+                    <div class="stat-value font-mono">
+                        {#if measuredFps >= 30}
+                            {measuredFps.toFixed(0)}
+                        {:else}
+                            <span class="text-warning">{measuredFps.toFixed(0)}</span>
+                        {/if}
+                    </div>
+                </div>
             </div>
 
             <!-- Compute steps per frame slider -->
