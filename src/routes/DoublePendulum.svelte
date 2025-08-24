@@ -1,12 +1,21 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte'
-    import tgpu, { type StorageFlag, type TgpuBuffer, type TgpuRoot, type UniformFlag } from 'typegpu'
+    import tgpu, {
+        type StorageFlag,
+        type TgpuBuffer,
+        type TgpuRoot,
+        type UniformFlag,
+    } from 'typegpu'
     import * as d from 'typegpu/data'
     import computeShaderCode from '$lib/shaders/pendulumFractal/compute.wgsl?raw'
     import vertexShaderCode from '$lib/shaders/pendulumFractal/vert.wgsl?raw'
     import fragmentShaderCode from '$lib/shaders/pendulumFractal/frag.wgsl?raw'
     import { RollingAverage } from '$lib/RollingAverage'
-    import { colorCETMaps, findColorCETMap, type ColorCETMap } from '$lib/ColorCET'
+    import {
+        colorCETMaps,
+        findColorCETMap,
+        type ColorCETMap,
+    } from '$lib/ColorCET'
 
     let length1 = $state(1.0)
     let length2 = $state(1.0)
@@ -20,7 +29,7 @@
     let lastTickTime = performance.now()
     let zoomAmount = $state(1.0)
     let zoomFactor = $state(2.0)
-    let zoomCenter = $state({theta1: 0, theta2: 0})
+    let zoomCenter = $state({ theta1: 0, theta2: 0 })
     let integrationTimestep = 0.005
     // Temporary value for timestep slider until the slider is released
     let integrationTimestepTemp = $state(integrationTimestep)
@@ -50,12 +59,11 @@
     const perturbationAmount = 0.5
     const maxTraceLength = 1000
     const traceWidth = 2
-    const cyclicColorMaps = colorCETMaps.filter(map => 
-        map.id.type === 'cyclic' && 
-        map.id.variant !== 's'
+    const cyclicColorMaps = colorCETMaps.filter(
+        (map) => map.id.type === 'cyclic' && map.id.variant !== 's'
     )
-    const linearColorMaps = colorCETMaps.filter(map => 
-        map.id.type === 'linear'
+    const linearColorMaps = colorCETMaps.filter(
+        (map) => map.id.type === 'linear'
     )
     const defaultCyclicColorMap = findColorCETMap({ type: 'cyclic', id: 3 })!
     const defaultDivergingColorMap = defaultCyclicColorMap
@@ -181,10 +189,7 @@
         device.queue.submit([commandEncoder.finish()])
         const mainPendulum = await readBufferA.read()
         const perturbedPendulum = await readBufferB.read()
-        sampledPendulum = [
-            ...mainPendulum,
-            ...perturbedPendulum,
-        ]
+        sampledPendulum = [...mainPendulum, ...perturbedPendulum]
         readBufferA.destroy()
         readBufferB.destroy()
     }
@@ -307,7 +312,7 @@
                 d.struct({
                     // (initial_energy, kinetic_energy, potential_energy)
                     energy: d.vec3f,
-                    // Distance between the 2 pendulums 
+                    // Distance between the 2 pendulums
                     distance: d.f32,
                 }),
                 pixelCount
@@ -320,9 +325,7 @@
             // Two states (theta1, omega1, theta2, omega2) per pixel
             // One is the main pendulum, and the other is slightly perturbed
             const statesBufferData = d.arrayOf(d.vec4f, pixelCount * 2)
-            statesBuffer = root
-                .createBuffer(statesBufferData)
-                .$usage('storage')
+            statesBuffer = root.createBuffer(statesBufferData).$usage('storage')
             cleanupFns.push(() => statesBuffer.destroy())
 
             const initialStates: d.v4f[] = new Array(pixelCount * 2)
@@ -343,7 +346,9 @@
                         initialStates[i] = d.vec4f(theta1, 0, theta2, 0)
 
                         // Perturb the second pendulum slightly in phase space
-                        const r = perturbationAmount * (Math.PI / zoomAmount) / (gridSize - 1)
+                        const r =
+                            (perturbationAmount * (Math.PI / zoomAmount)) /
+                            (gridSize - 1)
                         const angle = Math.random() * 2 * Math.PI
                         const deltaTheta1 = r * Math.cos(angle)
                         const deltaTheta2 = r * Math.sin(angle)
@@ -382,12 +387,12 @@
             cleanupFns.push(() => visualizationModeBuffer.destroy())
 
             // Buffer for selected color map
-            const colorMapBufferData = d.arrayOf(d.vec3f, selectedColorMap.colors.length)
+            const colorMapBufferData = d.arrayOf(
+                d.vec3f,
+                selectedColorMap.colors.length
+            )
             const colorMapBuffer = root
-                .createBuffer(
-                    colorMapBufferData,
-                    selectedColorMap.colors
-                )
+                .createBuffer(colorMapBufferData, selectedColorMap.colors)
                 .$usage('storage', 'vertex')
             cleanupFns.push(() => colorMapBuffer.destroy())
 
@@ -400,13 +405,16 @@
                 uniforms: { uniform: uniformBufferData },
                 states: { storage: statesBufferData, access: 'mutable' },
                 pixels: { storage: pixelsBufferData, access: 'mutable' },
-            });
-
-            const computeBindGroup = root.createBindGroup(computeBindGroupLayout, {
-                uniforms: uniformBuffer,
-                states: statesBuffer,
-                pixels: pixelsBuffer,
             })
+
+            const computeBindGroup = root.createBindGroup(
+                computeBindGroupLayout,
+                {
+                    uniforms: uniformBuffer,
+                    states: statesBuffer,
+                    pixels: pixelsBuffer,
+                }
+            )
 
             const computePipeline = device.createComputePipeline({
                 layout: device.createPipelineLayout({
@@ -436,13 +444,16 @@
                 visualizationMode: { uniform: d.u32 },
             })
 
-            const renderBindGroup = root.createBindGroup(renderBindGroupLayout, {
-                gridSize: gridSizeBuffer,
-                states: statesBuffer,
-                pixels: pixelsBuffer,
-                colorMap: colorMapBuffer,
-                visualizationMode: visualizationModeBuffer,
-            })
+            const renderBindGroup = root.createBindGroup(
+                renderBindGroupLayout,
+                {
+                    gridSize: gridSizeBuffer,
+                    states: statesBuffer,
+                    pixels: pixelsBuffer,
+                    colorMap: colorMapBuffer,
+                    visualizationMode: visualizationModeBuffer,
+                }
+            )
 
             const renderPipeline = device.createRenderPipeline({
                 layout: device.createPipelineLayout({
@@ -646,7 +657,7 @@
     }
 
     function angleToColor(theta: number, colorMap: ColorCETMap): string {
-        const normalizedTheta = ((theta / (2 * Math.PI)) % 1 + 1) % 1
+        const normalizedTheta = (((theta / (2 * Math.PI)) % 1) + 1) % 1
         const index = Math.floor(normalizedTheta * (colorMap.colors.length - 1))
         return arrayToRGB(colorMap.colors[index])
     }
@@ -689,9 +700,7 @@
             const colorIndex = Math.floor(
                 normDist * (selectedColorMap.colors.length - 1)
             )
-            const lineColor = arrayToRGB(
-                selectedColorMap.colors[colorIndex]
-            )
+            const lineColor = arrayToRGB(selectedColorMap.colors[colorIndex])
 
             // Add line trace between bobs
             trace.push({
@@ -771,7 +780,9 @@
         const w = gradientCanvas.width
         const h = gradientCanvas.height
         for (let x = 0; x < w; x++) {
-            const colorIndex = Math.floor(x / (w - 1) * (selectedColorMap.colors.length - 1))
+            const colorIndex = Math.floor(
+                (x / (w - 1)) * (selectedColorMap.colors.length - 1)
+            )
             const color = selectedColorMap.colors[colorIndex]
             context.fillStyle = arrayToRGB(color)
             context.fillRect(x, 0, 1, h)
@@ -849,7 +860,7 @@
         <div class="flex-none" style="position:relative;">
             <!-- Fractal canvas -->
             <canvas
-                class="skeleton w-full rounded-lg border border-gray-700 z-0"
+                class="skeleton z-0 w-full rounded-lg border border-gray-700"
                 width={gridSize}
                 height={gridSize}
                 bind:this={fractalCanvas}
@@ -861,7 +872,7 @@
                 width={gridSize}
                 height={gridSize}
                 bind:this={crosshairCanvas}
-                class="pointer-events-none absolute z-10 top-0 left-0"
+                class="pointer-events-none absolute top-0 left-0 z-10"
             ></canvas>
         </div>
 
@@ -980,7 +991,9 @@
             <div class="stats flex justify-items-center">
                 <div class="stat">
                     <div class="stat-title">Ticks / sec</div>
-                    <div class="stat-value font-mono">{Math.abs(measuredTps).toFixed(0)}</div>
+                    <div class="stat-value font-mono">
+                        {Math.abs(measuredTps).toFixed(0)}
+                    </div>
                 </div>
                 <div class="stat">
                     <div class="stat-title">Frames / sec</div>
@@ -988,7 +1001,9 @@
                         {#if measuredFps >= 30}
                             {measuredFps.toFixed(0)}
                         {:else}
-                            <span class="text-warning">{measuredFps.toFixed(0)}</span>
+                            <span class="text-warning"
+                                >{measuredFps.toFixed(0)}</span
+                            >
                         {/if}
                     </div>
                 </div>
@@ -1015,7 +1030,9 @@
             <!-- Time step slider -->
             <legend class="fieldset-legend">
                 Time step
-                <span class="font-mono">{integrationTimestepTemp.toFixed(4)}</span>
+                <span class="font-mono"
+                    >{integrationTimestepTemp.toFixed(4)}</span
+                >
             </legend>
             <input
                 type="range"

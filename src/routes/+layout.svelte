@@ -29,16 +29,13 @@
     <div class="flex justify-start p-2 font-mono text-xs">
         {#if adapterInfo}
             <div class="text-success">
-                {adapterInfo.vendor} {adapterInfo.architecture}
+                {adapterInfo.vendor}
+                {adapterInfo.architecture}
             </div>
         {:else if adapterInfo === null}
-            <div class="text-error">
-                WebGPU not supported
-            </div>
+            <div class="text-error">WebGPU not supported</div>
         {:else}
-            <div class="text-warning">
-                WebGPU is not available
-            </div>
+            <div class="text-warning">WebGPU is not available</div>
         {/if}
     </div>
 

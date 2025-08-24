@@ -67,25 +67,25 @@ const modules = Object.entries(
 )
 
 // Load all colormaps as a map from "CET-C3s" etc to csv string
-export const colorCETMaps: ColorCETMap[] =
-    modules.map(([path, csv]) => {
-        const idString = path.split('-').pop()!.replace('.csv', '')
-        const colors = (csv as string)
-            .split('\n')
-            .filter((line) => line.trim() !== '')
-            .map((line) => {
-                const [r, g, b] = line.split(',').map(Number)
-                return d.vec3f(r / 255, g / 255, b / 255)
-            })
-        const id = getId(idString)
-        const displayName = getDisplayName(id)
-        return { id, displayName, colors }
-    })
+export const colorCETMaps: ColorCETMap[] = modules.map(([path, csv]) => {
+    const idString = path.split('-').pop()!.replace('.csv', '')
+    const colors = (csv as string)
+        .split('\n')
+        .filter((line) => line.trim() !== '')
+        .map((line) => {
+            const [r, g, b] = line.split(',').map(Number)
+            return d.vec3f(r / 255, g / 255, b / 255)
+        })
+    const id = getId(idString)
+    const displayName = getDisplayName(id)
+    return { id, displayName, colors }
+})
 
 export function findColorCETMap(id: ColorCETIdentifier): ColorCETMap {
-    return colorCETMaps.find(entry =>
-        entry.id.type === id.type &&
-        entry.id.id === id.id &&
-        entry.id.variant === id.variant
-    )!;
+    return colorCETMaps.find(
+        (entry) =>
+            entry.id.type === id.type &&
+            entry.id.id === id.id &&
+            entry.id.variant === id.variant
+    )!
 }
