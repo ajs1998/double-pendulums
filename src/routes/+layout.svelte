@@ -3,6 +3,7 @@
     import { onMount } from 'svelte'
     import tgpu, { type TgpuRoot } from 'typegpu'
     import DoublePendulum from './DoublePendulum.svelte'
+    import { PUBLIC_RELEASE_TAG } from '$env/static/public'
 
     let adapterInfo: GPUAdapterInfo | undefined | null = $state(undefined)
     let webGPUModal: HTMLDialogElement
@@ -26,17 +27,23 @@
 <div>
     <DoublePendulum />
 
-    <div class="flex justify-start p-2 font-mono text-xs">
-        {#if adapterInfo}
-            <div class="text-success">
-                {adapterInfo.vendor}
-                {adapterInfo.architecture}
-            </div>
-        {:else if adapterInfo === null}
-            <div class="text-error">WebGPU not supported</div>
-        {:else}
-            <div class="text-warning">WebGPU is not available</div>
-        {/if}
+    <div class="bg-base-200 flex p-2 font-mono text-xs">
+        <div class="flex-1 text-start">
+            {#if adapterInfo}
+                <div class="text-success">
+                    GPU:
+                    {adapterInfo.vendor}
+                    {adapterInfo.architecture}
+                </div>
+            {:else if adapterInfo === null}
+                <div class="text-error">WebGPU not supported</div>
+            {:else}
+                <div class="text-warning">WebGPU is not available</div>
+            {/if}
+        </div>
+        <div class="flex-1 text-end">
+            {PUBLIC_RELEASE_TAG ?? 'dev'}
+        </div>
     </div>
 
     <footer

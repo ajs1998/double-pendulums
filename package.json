@@ -7,7 +7,6 @@
         "dev": "vite --port 8000",
         "build": "vite build",
         "test": "vitest",
-        "preview": "vite preview",
         "prepare": "svelte-kit sync || echo ''",
         "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
         "lint": "eslint . && prettier --check .",

@@ -871,7 +871,7 @@
             ></canvas>
             <!-- Crosshair canvas -->
             <canvas
-                class="pointer-events-none absolute top-0 left-0 z-10"
+                class="pointer-events-none absolute top-0 left-0 z-10 w-full"
                 width={gridSize}
                 height={gridSize}
                 bind:this={crosshairCanvas}
