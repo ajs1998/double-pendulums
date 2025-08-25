@@ -59,6 +59,7 @@
     const perturbationAmount = 0.5
     const maxTraceLength = 1000
     const traceWidth = 2
+    const crosshairWidth = 2
     const cyclicColorMaps = colorCETMaps.filter(
         (map) => map.id.type === 'cyclic' && map.id.variant !== 's'
     )
@@ -68,9 +69,6 @@
     const defaultCyclicColorMap = findColorCETMap({ type: 'cyclic', id: 3 })!
     const defaultDivergingColorMap = defaultCyclicColorMap
     const defaultLinearColorMap = findColorCETMap({ type: 'linear', id: 16 })!
-
-    let selectableColorMaps = $state(cyclicColorMaps)
-    let selectedColorMap = $state(defaultCyclicColorMap)
 
     interface ClickAction {
         id: number
@@ -132,21 +130,23 @@
         },
     ])
 
+    let selectableColorMaps = $state(cyclicColorMaps)
+    let selectedColorMap = $state(defaultCyclicColorMap)
     let selectedClickAction = $state(clickActions[0])
-    let selectedVisualizationMode = $state(visualizationModes[0])
+    let selectedVisualizationMode = $state(visualizationModes[1])
     let sampledPendulumXY = $state(centerXY)
     let sampledPendulumLocation = $state([0, 0]) // Theta coordinates
     let sampledPendulum = $state([0, 0, 0, 0])
     let statesBuffer: TgpuBuffer<d.WgslArray<d.Vec4f>> & StorageFlag
 
-    // TODO Not accurate?
     function getClickXYCoordinates(e: MouseEvent) {
         const rect = fractalCanvas.getBoundingClientRect()
-        const x = Math.floor((e.clientX - rect.left) / (rect.width / gridSize))
+        // I don't know why adding 2 makes it look right
+        const x = 2 + Math.floor((e.x - rect.left) / (rect.width / gridSize))
         const y =
             gridSize -
             1 -
-            Math.floor((e.clientY - rect.top) / (rect.height / gridSize))
+            Math.floor((e.y - rect.top) / (rect.height / gridSize))
         return { x, y }
     }
 
@@ -598,7 +598,6 @@
         x2: number
         y2: number
         color: string
-        alpha: number
     }
 
     let trace: TraceSegment[] = []
@@ -641,7 +640,7 @@
             const segment = segments[i]
             context.save()
             // Fade alpha based on segment position
-            context.globalAlpha = segment.alpha * ((i + 1) / segments.length)
+            context.globalAlpha = i / (segments.length - 1)
             context.strokeStyle = segment.color
             context.lineWidth = traceWidth
             context.beginPath()
@@ -662,7 +661,6 @@
         return arrayToRGB(colorMap.colors[index])
     }
 
-    // TODO This is insanely long
     function drawSampledPendulum(theta1: number, theta2: number): void {
         const context = sampledCanvas.getContext('2d')
         if (!context) return
@@ -672,10 +670,11 @@
         const margin = 20
         const maxLength =
             Math.min(sampledCanvas.width, sampledCanvas.height) / 2 - margin
-        const l1 = maxLength / 2,
-            l2 = maxLength / 2
-        const m1 = 8,
-            m2 = 8
+        // TODO link to the actual arm lengths and bob masses
+        const l1 = maxLength / 2
+        const l2 = maxLength / 2
+        const m1 = 8
+        const m2 = 8
         const origin = {
             x: sampledCanvas.width / 2,
             y: sampledCanvas.height / 2,
@@ -709,7 +708,6 @@
                 x2: x2b,
                 y2: y2b,
                 color: lineColor,
-                alpha: 1.0,
             })
             if (trace.length > maxTraceLength) trace.shift()
             drawTrace(context, trace)
@@ -740,8 +738,10 @@
             let color1 = baseContentColor
             let color2 = baseContentColor
             if (selectedVisualizationMode.id === 0) {
+                // Theta 1: Color the first arm
                 color1 = angleToColor(theta1, selectedColorMap)
             } else if (selectedVisualizationMode.id === 1) {
+                // Theta 2: Color the second arm
                 color2 = angleToColor(theta2, selectedColorMap)
             }
 
@@ -751,17 +751,19 @@
                 x2: x2,
                 y2: y2,
                 color: baseContentColor,
-                alpha: 1.0,
             })
-            if (trace.length > maxTraceLength) trace.shift()
+            if (trace.length > maxTraceLength) {
+                trace.shift()
+            }
+
             // Draw trace as bob path
             for (let i = 1; i < trace.length; ++i) {
                 const prev = trace[i - 1]
                 const curr = trace[i]
                 context.save()
-                context.globalAlpha = curr.alpha * (i / trace.length)
+                context.globalAlpha = i / (trace.length - 1)
                 context.strokeStyle = baseContentColor
-                context.lineWidth = 2
+                context.lineWidth = traceWidth
                 context.beginPath()
                 context.moveTo(prev.x1, prev.y1)
                 context.lineTo(curr.x1, curr.y1)
@@ -832,7 +834,7 @@
         const py = (gridSize - y) * (crosshairCanvas.height / gridSize)
         context.save()
         context.strokeStyle = baseContentColor
-        context.lineWidth = 2
+        context.lineWidth = crosshairWidth
 
         // Draw horizontal line
         context.beginPath()
@@ -869,10 +871,10 @@
             ></canvas>
             <!-- Crosshair canvas -->
             <canvas
+                class="pointer-events-none absolute top-0 left-0 z-10"
                 width={gridSize}
                 height={gridSize}
                 bind:this={crosshairCanvas}
-                class="pointer-events-none absolute top-0 left-0 z-10"
             ></canvas>
         </div>
 
