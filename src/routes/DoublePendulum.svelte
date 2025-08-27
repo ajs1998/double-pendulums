@@ -24,13 +24,13 @@
     let gravity = $state(10.0)
     let measuredTps = $state(0)
     let measuredFps = $state(0)
-    let targetTicksPerSecond = $state(500)
+    let targetTicksPerSecond = $state(100)
     let millisAccumulator = 0
     let lastTickTime = performance.now()
     let zoomAmount = $state(1.0)
     let zoomFactor = $state(2.0)
     let zoomCenter = $state({ theta1: 0, theta2: 0 })
-    let integrationTimestep = 0.005
+    let integrationTimestep = 0.009
     // Temporary value for timestep slider until the slider is released
     let integrationTimestepTemp = $state(integrationTimestep)
     let showCrosshair = $state(true)
@@ -1046,10 +1046,11 @@
                 bind:value={integrationTimestepTemp}
             />
             <div
-                class="tooltip tooltip-bottom"
+                class="tooltip tooltip-bottom flex"
                 data-tip="Lower is slower, but more accurate"
             >
-                <p class="label w-full">RK4 integration time step</p>
+                <p class="label w-full flex-1 justify-start">Accurate</p>
+                <p class="label w-full flex-1 justify-end">Fast</p>
             </div>
         </div>
     </div>
