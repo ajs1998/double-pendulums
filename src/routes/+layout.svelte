@@ -1,12 +1,12 @@
 <script lang="ts">
     import '../app.css'
     import { onMount } from 'svelte'
-    import tgpu, { type TgpuRoot } from 'typegpu'
-    import DoublePendulum from './DoublePendulum.svelte'
+    import tgpu from 'typegpu'
     import { PUBLIC_RELEASE_TAG } from '$env/static/public'
 
     let adapterInfo: GPUAdapterInfo | undefined | null = $state(undefined)
     let webGPUModal: HTMLDialogElement
+    let { children } = $props()
 
     onMount(async () => {
         const webGPURoot = await tgpu.init().catch(() => undefined)
@@ -18,14 +18,15 @@
             adapterInfo = device.adapterInfo
 
             console.log('WebGPU supported')
-            console.log(device.adapterInfo)
+            console.log(adapterInfo)
             console.log(device.limits)
+            webGPURoot?.destroy()
         }
     })
 </script>
 
 <div>
-    <DoublePendulum />
+    {@render children()}
 
     <div class="bg-base-200 flex p-2 font-mono text-xs">
         <div class="flex-1 text-start">
@@ -42,7 +43,7 @@
             {/if}
         </div>
         <div class="flex-1 text-end">
-            {PUBLIC_RELEASE_TAG ?? 'dev'}
+            {PUBLIC_RELEASE_TAG}
         </div>
     </div>
 
