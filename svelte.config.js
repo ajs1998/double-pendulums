@@ -18,7 +18,7 @@ const config = {
             entries: ['*'],
         },
         paths: {
-            base: prod ? '/webgpu-experiments' : '',
+            base: prod ? '/double-pendulums' : '',
         },
     },
 }
