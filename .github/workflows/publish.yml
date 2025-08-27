@@ -39,7 +39,7 @@ jobs:
             - name: Build
               run: yarn build
               env:
-                  PUBLIC_RELEASE_TAG: ${{ github.ref }}
+                  PUBLIC_RELEASE_TAG: ${{ github.ref_name }}
 
             - name: Upload Artifacts
               uses: actions/upload-pages-artifact@v3
