@@ -226,7 +226,8 @@
         const { theta1, theta2 } = toThetaCoordinates(x, y)
         sampledPendulumXY = [x, y]
         sampledPendulumLocation = [theta1 / Math.PI, theta2 / Math.PI]
-        trace = []
+        pathTrace = []
+        distanceTrace = []
         if (selectedClickAction.id === 0) {
             samplePendulum(x, y)
         } else if (selectedClickAction.id === 1) {
@@ -270,7 +271,8 @@
             cleanupFns.forEach((fn) => fn())
             cleanupFns = []
             integrationTimestep = integrationTimestepTemp
-            trace = []
+            pathTrace = []
+            distanceTrace = []
 
             drawColormapPreview()
 
@@ -376,7 +378,8 @@
                         }
                     })
                 )
-                trace = []
+                pathTrace = []
+                distanceTrace = []
             }
             resetPendulums()
 
@@ -600,7 +603,8 @@
         color: string
     }
 
-    let trace: TraceSegment[] = []
+    let pathTrace: TraceSegment[] = []
+    let distanceTrace: TraceSegment[] = []
     let baseContentColor: string
 
     // TODO Is this inefficient?
@@ -632,14 +636,13 @@
         context.fill()
     }
 
-    function drawTrace(
+    // Draw distance trace between bobs
+    function drawDistanceTrace(
         context: CanvasRenderingContext2D,
         segments: TraceSegment[]
     ) {
         for (let i = 0; i < segments.length; ++i) {
             const segment = segments[i]
-            context.save()
-            // Fade alpha based on segment position
             context.globalAlpha = i / (segments.length - 1)
             context.strokeStyle = segment.color
             context.lineWidth = traceWidth
@@ -647,7 +650,24 @@
             context.moveTo(segment.x1, segment.y1)
             context.lineTo(segment.x2, segment.y2)
             context.stroke()
-            context.restore()
+        }
+    }
+
+    // Draw path trace of bob position
+    function drawPathTrace(
+        context: CanvasRenderingContext2D,
+        segments: TraceSegment[]
+    ) {
+        for (let i = 1; i < segments.length; ++i) {
+            const prev = segments[i - 1]
+            const curr = segments[i]
+            context.globalAlpha = i / (segments.length - 1)
+            context.strokeStyle = curr.color
+            context.lineWidth = traceWidth
+            context.beginPath()
+            context.moveTo(prev.x1, prev.y1)
+            context.lineTo(curr.x1, curr.y1)
+            context.stroke()
         }
     }
 
@@ -661,7 +681,7 @@
         return arrayToRGB(colorMap.colors[index])
     }
 
-    function drawSampledPendulum(theta1: number, theta2: number): void {
+    function drawSampledPendulum(theta1a: number, theta2a: number): void {
         const context = sampledCanvas.getContext('2d')
         if (!context) return
 
@@ -681,10 +701,10 @@
         }
 
         // First pendulum positions
-        const x1 = origin.x + l1 * Math.sin(theta1)
-        const y1 = origin.y + l1 * Math.cos(theta1)
-        const x2 = x1 + l2 * Math.sin(theta2)
-        const y2 = y1 + l2 * Math.cos(theta2)
+        const x1a = origin.x + l1 * Math.sin(theta1a)
+        const y1a = origin.y + l1 * Math.cos(theta1a)
+        const x2a = x1a + l2 * Math.sin(theta2a)
+        const y2a = y1a + l2 * Math.cos(theta2a)
 
         if (selectedVisualizationMode.id === 2) {
             // Sensitivity mode: draw both pendulums and trace line between bobs
@@ -694,32 +714,43 @@
             const y1b = origin.y + l1 * Math.cos(theta1b)
             const x2b = x1b + l2 * Math.sin(theta2b)
             const y2b = y1b + l2 * Math.cos(theta2b)
-            const dist = Math.sqrt((x2 - x2b) ** 2 + (y2 - y2b) ** 2)
+            const dist = Math.sqrt((x2a - x2b) ** 2 + (y2a - y2b) ** 2)
             const normDist = Math.min(dist / (2 * maxLength), 1)
             const colorIndex = Math.floor(
                 normDist * (selectedColorMap.colors.length - 1)
             )
             const lineColor = arrayToRGB(selectedColorMap.colors[colorIndex])
 
-            // Add line trace between bobs
-            trace.push({
-                x1: x2,
-                y1: y2,
+            // Trace the path of the bob
+            pathTrace.push({
+                x1: x2a,
+                y1: y2a,
+                x2: x2a,
+                y2: y2a,
+                color: baseContentColor,
+            })
+            // Trace the distance between bobs
+            distanceTrace.push({
+                x1: x2a,
+                y1: y2a,
                 x2: x2b,
                 y2: y2b,
                 color: lineColor,
             })
-            if (trace.length > maxTraceLength) trace.shift()
-            drawTrace(context, trace)
+
+            if (pathTrace.length > maxTraceLength) pathTrace.shift()
+            if (distanceTrace.length > maxTraceLength) distanceTrace.shift()
+            drawDistanceTrace(context, distanceTrace)
+            drawPathTrace(context, pathTrace)
 
             // Draw both pendulums
-            drawArmAndBob(context, x1, y1, x2, y2, m2, baseContentColor)
+            drawArmAndBob(context, x1a, y1a, x2a, y2a, m2, baseContentColor)
             drawArmAndBob(
                 context,
                 origin.x,
                 origin.y,
-                x1,
-                y1,
+                x1a,
+                y1a,
                 m1,
                 baseContentColor
             )
@@ -739,39 +770,24 @@
             let color2 = baseContentColor
             if (selectedVisualizationMode.id === 0) {
                 // Theta 1: Color the first arm
-                color1 = angleToColor(theta1, selectedColorMap)
+                color1 = angleToColor(theta1a, selectedColorMap)
             } else if (selectedVisualizationMode.id === 1) {
                 // Theta 2: Color the second arm
-                color2 = angleToColor(theta2, selectedColorMap)
+                color2 = angleToColor(theta2a, selectedColorMap)
             }
 
-            trace.push({
-                x1: x2,
-                y1: y2,
-                x2: x2,
-                y2: y2,
+            pathTrace.push({
+                x1: x2a,
+                y1: y2a,
+                x2: x2a,
+                y2: y2a,
                 color: baseContentColor,
             })
-            if (trace.length > maxTraceLength) {
-                trace.shift()
-            }
+            if (pathTrace.length > maxTraceLength) pathTrace.shift()
+            drawPathTrace(context, pathTrace)
 
-            // Draw trace as bob path
-            for (let i = 1; i < trace.length; ++i) {
-                const prev = trace[i - 1]
-                const curr = trace[i]
-                context.save()
-                context.globalAlpha = i / (trace.length - 1)
-                context.strokeStyle = baseContentColor
-                context.lineWidth = traceWidth
-                context.beginPath()
-                context.moveTo(prev.x1, prev.y1)
-                context.lineTo(curr.x1, curr.y1)
-                context.stroke()
-                context.restore()
-            }
-            drawArmAndBob(context, x1, y1, x2, y2, m2, color2)
-            drawArmAndBob(context, origin.x, origin.y, x1, y1, m1, color1)
+            drawArmAndBob(context, x1a, y1a, x2a, y2a, m2, color2)
+            drawArmAndBob(context, origin.x, origin.y, x1a, y1a, m1, color1)
         }
     }
 
