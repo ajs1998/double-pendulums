@@ -1,16 +1,17 @@
-# TODO
+# Double Pendulum Fractal
 
-- Address performance on PC
-- Themes
-- Cleanup the code
-- Make this README helpful and relevant to the project
-- Address all TODOs
-- Favicon 400
-- URL on alexjs.dev
-- Release v0 and squash the whole commit history
+https://ajs1998.github.io/double-pendulums/
 
-# Project goals
+Double pendulums are famously chaotic systems,
+but there are many double pendulums that are extremely stable.
+This website lets you explore the space of all initial pendulum states.
 
-- [ ] v0: First entry in my public portfolio
-- [ ] Something to be proud of
-- [ ] Open to contributions
+Read more in the [blog post](https://leaflet.pub/06a1cdb9-5639-4936-bb8e-f4c3970ef2cb)
+
+---
+
+This project was inspired by [2swap's YouTube video](https://www.youtube.com/watch?v=dtjb2OhEQcU) on the same subject.
+
+## Contribute
+
+If you have ideas or code changes, I'm open to any feedback and contributions.
